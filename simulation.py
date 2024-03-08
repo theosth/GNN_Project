@@ -201,6 +201,13 @@ class ElasticCollisionSimulation(Simulation):
             * (torch.dot(-v_rel, -unit_distance_vec))
             * unit_distance_vec
         )
+        # optional: push bodies apart to avoid error in collision detection due to overlap
+        separation_distance = (body_a.radius + body_b.radius) - torch.linalg.norm(body_a.position - body_b.position)
+        if separation_distance > 0:
+            # Push bodies apart by a fraction of the overlap
+            move_distance = separation_distance * 0.01  # fraction of overlap
+            body_a.position -= unit_distance_vec * move_distance
+            body_b.position += unit_distance_vec * move_distance
 
     def run_simulation(self, total_time: float, dt: float):
         num_steps = int(total_time / dt)
