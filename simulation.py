@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import torch
 import random
+import json
 
 
 class Body:
@@ -26,6 +27,54 @@ class Body:
     def __repr__(self):
         return f"Body(position={self.position}, velocity={self.velocity}, mass={self.mass}, radius={self.radius})"
 
+    def to_dict(self):
+        """Convert the Body instance into a dictionary for JSON serialization."""
+        return {
+            "position": self.position.tolist(),  # Convert tensors to lists
+            "velocity": self.velocity.tolist(),
+            "mass": self.mass,  # Convert tensor scalar to Python scalar
+            "radius": self.radius,
+            "position_history": [p.tolist() for p in self.position_history],
+            "velocity_history": [v.tolist() for v in self.velocity_history],
+        }
+
+    @staticmethod
+    def from_dict(data):
+        """Reconstruct a Body instance from a dictionary."""
+        body = Body(
+            position=torch.tensor(data["position"]),
+            velocity=torch.tensor(data["velocity"]),
+            mass=torch.tensor(data["mass"]),
+            radius=torch.tensor(data["radius"]),
+        )
+        body.position_history = [torch.tensor(p) for p in data["position_history"]]
+        body.velocity_history = [torch.tensor(v) for v in data["velocity_history"]]
+        return body
+
+    @staticmethod
+    def save_bodies_to_json(bodies, file_name="bodies.json"):
+        """
+        Save the list of bodies, including their histories, to a JSON file.
+
+        :param bodies: List of Body instances to be saved.
+        :param file_name: Name of the file where the bodies will be saved.
+        """
+        with open(file_name, "w") as file:
+            # Convert each Body instance to a dictionary and save
+            json.dump([body.to_dict() for body in bodies], file, indent=4)
+
+    @staticmethod
+    def load_bodies_from_json(file_name="bodies.json"):
+        """
+        Load the list of bodies from a JSON file.
+
+        :param file_name: Name of the file from which to load the bodies.
+        :return: List of Body instances loaded from the file.
+        """
+        with open(file_name, "r") as file:
+            bodies_data = json.load(file)
+        return [Body.from_dict(body_dict) for body_dict in bodies_data]
+
 
 class Simulation(ABC):
 
@@ -33,10 +82,14 @@ class Simulation(ABC):
         self,
         space_size: torch.Tensor = torch.tensor([100, 100]),
         enable_logging: bool = False,
+        total_time: float = 1000.0,
+        dt: float = 1.0,
     ):
         self.space_size: torch.Tensor = space_size
         self.bodies = self.initialize_bodies()
         self.enable_logging: bool = enable_logging
+        self.total_time: float = total_time
+        self.dt: float = dt
 
     @abstractmethod
     def initialize_bodies(self) -> list[Body]:
@@ -78,7 +131,7 @@ class Simulation(ABC):
         pass
 
     @abstractmethod
-    def run_simulation(self, total_time: float, dt: float):
+    def run_simulation(self):
         """
         Run the simulation for a total time of `total_time` with time steps of `dt`.
         """
@@ -202,17 +255,19 @@ class ElasticCollisionSimulation(Simulation):
             * unit_distance_vec
         )
         # optional: push bodies apart to avoid error in collision detection due to overlap
-        separation_distance = (body_a.radius + body_b.radius) - torch.linalg.norm(body_a.position - body_b.position)
+        separation_distance = (body_a.radius + body_b.radius) - torch.linalg.norm(
+            body_a.position - body_b.position
+        )
         if separation_distance > 0:
             # Push bodies apart by a fraction of the overlap
             move_distance = separation_distance * 0.01  # fraction of overlap
             body_a.position -= unit_distance_vec * move_distance
             body_b.position += unit_distance_vec * move_distance
 
-    def run_simulation(self, total_time: float, dt: float):
-        num_steps = int(total_time / dt)
+    def run_simulation(self):
+        num_steps = int(self.total_time / self.dt)
         for _ in range(num_steps):
-            self.update(dt)
+            self.update(self.dt)
 
     def logger(self, to_log):
         if self.enable_logging:
@@ -220,69 +275,111 @@ class ElasticCollisionSimulation(Simulation):
         else:
             pass
 
+    def save_simulation_params(self, file_name="simulation_params.json"):
+        """
+        Save the simulation parameters to a JSON file.
 
-if __name__ == "__main__":
+        :param file_name: Name of the file where the simulation will be saved.
+        """
+        with open(file_name, "w") as file:
+            # first save the parameters of the simulation
+            simulation_params = {
+                "space_size": self.space_size.tolist(),
+                "total_time": self.total_time,
+                "dt": self.dt,
+            }
+            json.dump(simulation_params, file, indent=4)
+
+
+def run_visualization_from_json(
+    file_name_params="simulation_params.json", file_name_bodies="bodies.json"
+):
     import pygame
     import sys
+
+    # Load simulation parameters
+    with open(file_name_params, "r") as f_params:
+        simulation_params = json.load(f_params)
 
     # Initialize Pygame
     pygame.init()
 
     # Fixed window size
-    window_size = (800, 800)  # Set a fixed window size
+    window_size = (800, 800)
 
-    # Simulation space size
-    space_size = (1000, 1000)  # This can vary
-
-    # Dynamically compute the scale factor to fit the simulation space into the window
+    # Compute the scale factor to fit the simulation space into the window
+    space_size = simulation_params["space_size"]
     scale_factor_x = window_size[0] / space_size[0]
     scale_factor_y = window_size[1] / space_size[1]
-    scale_factor = min(scale_factor_x, scale_factor_y)  # Ensure aspect ratio is maintained
+    scale_factor = min(
+        scale_factor_x, scale_factor_y
+    )  # Ensure aspect ratio is maintained
 
     # Set up the display
     screen = pygame.display.set_mode(window_size)
-    pygame.display.set_caption("Elastic Collision Simulation")
+    pygame.display.set_caption("Elastic Collision Visualization")
 
     # Define colors
     background_color = (0, 0, 0)
     ball_color = (255, 255, 255)
 
-    # Main animation loop
+    # Load bodies from JSON file
+    bodies = Body.load_bodies_from_json(file_name_bodies)
+    # Main animation loop setup
     clock = pygame.time.Clock()
     running = True
-    simulation_time_step = 1.0  # Corresponds to the dt in your simulation
     frame_rate = 100  # Frames per second
-
-    # Create simulation instance
-    simulation = ElasticCollisionSimulation(space_size=torch.tensor(space_size), enable_logging=False)
-
-    # Run the simulation separately to gather all positions before animating
-    simulation.run_simulation(total_time=10000.0, dt=simulation_time_step)
 
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
 
-        # Clear the screen
-        screen.fill(background_color)
+        screen.fill(background_color)  # Clear the screen
 
         # Draw the balls
-        for body in simulation.bodies:
+        for body in bodies:
             if len(body.position_history) > 0:
-                # Get the next position from the history and remove it
                 position = body.position_history.pop(0).numpy()
-                # Scale the position for the display
-                scaled_position = (int(position[0] * scale_factor), int(position[1] * scale_factor))
-                # Draw the ball
-                pygame.draw.circle(screen, ball_color, scaled_position, int(body.radius * scale_factor))
+                scaled_position = (
+                    int(position[0] * scale_factor),
+                    int(position[1] * scale_factor),
+                )
+                pygame.draw.circle(
+                    screen, ball_color, scaled_position, int(body.radius * scale_factor)
+                )
 
-        # Update the display
-        pygame.display.flip()
-
-        # Cap the frame rate
-        clock.tick(frame_rate)
+        pygame.display.flip()  # Update the display
+        clock.tick(frame_rate)  # Cap the frame rate
 
     pygame.quit()
     sys.exit()
 
+
+if __name__ == "__main__":
+
+    # simulation_time_step = 1.0  # Corresponds to the dt in your simulation
+    # frame_rate = 100  # Frames per second
+    # space_size = [1000, 1000]
+
+    # # Create simulation instance
+    # simulation = ElasticCollisionSimulation(
+    #     total_time=1000.0,
+    #     dt=simulation_time_step,
+    #     space_size=torch.tensor(space_size),
+    #     enable_logging=False,
+    # )
+
+    # # Run the simulation separately to gather all positions before animating
+    # simulation.run_simulation()
+
+    # # save the simulation parameters to a JSON file
+    # simulation.save_simulation_params(file_name="simulation_params.json")
+
+    # # save the  bodies to a JSON file
+    # Body.save_bodies_to_json(simulation.bodies, file_name="bodies.json")
+
+    # Run the visualization
+    run_visualization_from_json(
+        file_name_params="simulation_params.json", file_name_bodies="bodies.json"
+    )
