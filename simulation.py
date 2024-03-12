@@ -364,7 +364,7 @@ if __name__ == "__main__":
 
     # # Create simulation instance
     # simulation = ElasticCollisionSimulation(
-    #     total_time=1000.0,
+    #     total_time=10000.0,
     #     dt=simulation_time_step,
     #     space_size=torch.tensor(space_size),
     #     enable_logging=False,
