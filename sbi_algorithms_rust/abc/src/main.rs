@@ -258,7 +258,7 @@ fn run_abc() {
     let num_bodies = 4;
     let space_size_x = 10.0;
     let space_size_y = 10.0;
-    let total_time = 10.0;
+    let total_time = 1.0;
     let time_step = 0.01;
 
     let mut rng = rand::thread_rng();
@@ -447,11 +447,15 @@ fn run_abc() {
         current_iteration += 1;
     }
     println!("total iterations: {}", current_iteration);
+    println!("time: {:?}", start.elapsed());
     // time per iteration
     println!(
         "time per iteration: {:?}",
         start.elapsed() / current_iteration as u32
     );
+    // in seconds
+    println!("time per iteration in seconds: {:?}", start.elapsed().as_secs_f64()/current_iteration as f64);
+
     // println!("final original positions x: {:?}", final_positions_x);
     // println!("final original positions y: {:?}", final_positions_y);
     // println!("accepted positions x: {:?}", accepted_positions_x);
