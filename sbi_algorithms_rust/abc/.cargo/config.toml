@@ -1,0 +1,5 @@
+[build]
+rustflags = ["-Ctarget-cpu=native"]
+
+[target.arm64e-apple-darwin]
+rustflags = ["-Ctarget-cpu=native"]
