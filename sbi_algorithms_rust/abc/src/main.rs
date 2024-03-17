@@ -312,7 +312,6 @@ fn run_abc() {
     position_history_x.push(positions_x.clone());
     position_history_y.push(positions_y.clone());
 
-
     // simulate to get final positions
     simulate(
         num_bodies,
@@ -366,6 +365,9 @@ fn run_abc() {
     let mut current_boundary_collision_history: Vec<Vec<(usize, usize)>>;
 
     let mut current_iteration: usize = 0;
+
+    let start = std::time::Instant::now(); // measure time
+
     while accepted_states < n {
         // clone initial states so that we can revert to them if the state is not accepted
         current_positions_x = positions_x.clone();
@@ -445,6 +447,11 @@ fn run_abc() {
         current_iteration += 1;
     }
     println!("total iterations: {}", current_iteration);
+    // time per iteration
+    println!(
+        "time per iteration: {:?}",
+        start.elapsed() / current_iteration as u32
+    );
     // println!("final original positions x: {:?}", final_positions_x);
     // println!("final original positions y: {:?}", final_positions_y);
     // println!("accepted positions x: {:?}", accepted_positions_x);
@@ -453,7 +460,7 @@ fn run_abc() {
     // println!("original velocities y: {:?}", velocities_y);
     // println!("accepted velocities x: {:?}", accepted_velocities_x);
     // println!("accepted velocities y: {:?}", accepted_velocities_y);
-   
+
     write_simulation_data_to_json(
         "data/original_simulation_data.json",
         num_bodies,
