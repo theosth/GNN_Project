@@ -268,7 +268,6 @@ fn run_abc() {
     let position_distribution = Uniform::new(0.0, space_size_x).unwrap();
 
     // first initialize the bodies
-
     let mut velocities_x: Vec<f64> = velocity_distribution
         .sample_iter(&mut rng)
         .take(num_bodies)
@@ -307,6 +306,13 @@ fn run_abc() {
     let mut body_collision_history: Vec<Vec<(usize, usize)>> = Vec::new();
     let mut boundary_collision_history: Vec<Vec<(usize, usize)>> = Vec::new();
 
+    // append initial velocities and positions to their respective histories
+    velocity_history_x.push(velocities_x.clone());
+    velocity_history_y.push(velocities_y.clone());
+    position_history_x.push(positions_x.clone());
+    position_history_y.push(positions_y.clone());
+
+
     // simulate to get final positions
     simulate(
         num_bodies,
@@ -329,8 +335,8 @@ fn run_abc() {
     );
 
     // abc algorithm
-    let n = 1;
-    let epsilon = 0.9;
+    let n = 10;
+    let epsilon = 1.0;
 
     let mut accepted_states = 0;
     let mut accepted_velocities_x: Vec<Vec<f64>> = Vec::new();
@@ -382,6 +388,11 @@ fn run_abc() {
         current_position_history_y = Vec::new();
         current_body_collision_history = Vec::new();
         current_boundary_collision_history = Vec::new();
+        // append initial velocities and positions to their respective histories
+        current_velocity_history_x.push(current_velocities_x.clone());
+        current_velocity_history_y.push(current_velocities_y.clone());
+        current_position_history_x.push(current_positions_x.clone());
+        current_position_history_y.push(current_positions_y.clone());
 
         // simulate with sampled velocities
         simulate(
@@ -416,6 +427,7 @@ fn run_abc() {
         // if the error is less than epsilon, accept the state
         if error < epsilon {
             accepted_states += 1;
+            println!("accepted states: {}", accepted_states);
             accepted_velocities_x.push(current_velocities_x.clone());
             accepted_velocities_y.push(current_velocities_y.clone());
             accepted_positions_x.push(current_positions_x.clone());
@@ -433,33 +445,15 @@ fn run_abc() {
         current_iteration += 1;
     }
     println!("total iterations: {}", current_iteration);
-    println!("final original positions x: {:?}", final_positions_x);
-    println!("final original positions y: {:?}", final_positions_y);
-    println!("accepted positions x: {:?}", accepted_positions_x);
-    println!("accepted positions y: {:?}", accepted_positions_y);
-    println!("original velocities x: {:?}", velocities_x);
-    println!("original velocities y: {:?}", velocities_y);
-    println!("accepted velocities x: {:?}", accepted_velocities_x);
-    println!("accepted velocities y: {:?}", accepted_velocities_y);
-    // println!("original position history x: {:?}", position_history_x);
-    // println!("original position history y: {:?}", position_history_y);
-    // println!(
-    //     "accepted position history x: {:?}",
-    //     accepted_position_history_x
-    // );
-    // println!(
-    //     "accepted position history y: {:?}",
-    //     accepted_position_history_y
-    // );
-    // println!(
-    //     "original body collision history: {:?}",
-    //     body_collision_history
-    // );
-    // println!(
-    //     "accepted body collision history: {:?}",
-    //     accepted_body_collision_history
-    // );
-
+    // println!("final original positions x: {:?}", final_positions_x);
+    // println!("final original positions y: {:?}", final_positions_y);
+    // println!("accepted positions x: {:?}", accepted_positions_x);
+    // println!("accepted positions y: {:?}", accepted_positions_y);
+    // println!("original velocities x: {:?}", velocities_x);
+    // println!("original velocities y: {:?}", velocities_y);
+    // println!("accepted velocities x: {:?}", accepted_velocities_x);
+    // println!("accepted velocities y: {:?}", accepted_velocities_y);
+   
     write_simulation_data_to_json(
         "data/original_simulation_data.json",
         num_bodies,
@@ -467,18 +461,15 @@ fn run_abc() {
         space_size_y,
         total_time,
         time_step,
-        &velocities_x,
-        &velocities_y,
         &radii,
         &masses,
-        &positions_x,
-        &positions_y,
-        &velocity_history_x,
-        &velocity_history_y,
-        &position_history_x,
-        &position_history_y,
-        &body_collision_history,
-        &boundary_collision_history,
+        // put into vec to match the format of the accepted data
+        &vec![velocity_history_x.clone()],
+        &vec![velocity_history_y.clone()],
+        &vec![position_history_x.clone()],
+        &vec![position_history_y.clone()],
+        &vec![body_collision_history.clone()],
+        &vec![boundary_collision_history.clone()],
     );
 
     write_simulation_data_to_json(
@@ -488,20 +479,15 @@ fn run_abc() {
         space_size_y,
         total_time,
         time_step,
-        &accepted_velocities_x[0],
-        &accepted_velocities_y[0],
         &radii,
         &masses,
-        &accepted_positions_x[0],
-        &accepted_positions_y[0],
-        &accepted_velocity_history_x[0],
-        &accepted_velocity_history_y[0],
-        &accepted_position_history_x[0],
-        &accepted_position_history_y[0],
-        &accepted_body_collision_history[0],
-        &accepted_boundary_collision_history[0],
+        &accepted_velocity_history_x,
+        &accepted_velocity_history_y,
+        &accepted_position_history_x,
+        &accepted_position_history_y,
+        &accepted_body_collision_history,
+        &accepted_boundary_collision_history,
     );
-
 }
 
 fn write_simulation_data_to_json(
@@ -511,18 +497,14 @@ fn write_simulation_data_to_json(
     space_size_y: f64,
     total_time: f64,
     time_step: f64,
-    velocities_x: &Vec<f64>,
-    velocities_y: &Vec<f64>,
     radii: &Vec<f64>,
     masses: &Vec<f64>,
-    positions_x: &Vec<f64>,
-    positions_y: &Vec<f64>,
-    velocity_history_x: &Vec<Vec<f64>>,
-    velocity_history_y: &Vec<Vec<f64>>,
-    position_history_x: &Vec<Vec<f64>>,
-    position_history_y: &Vec<Vec<f64>>,
-    body_collision_history: &Vec<Vec<(usize, usize)>>,
-    boundary_collision_history: &Vec<Vec<(usize, usize)>>,
+    velocity_history_x: &Vec<Vec<Vec<f64>>>,
+    velocity_history_y: &Vec<Vec<Vec<f64>>>,
+    position_history_x: &Vec<Vec<Vec<f64>>>,
+    position_history_y: &Vec<Vec<Vec<f64>>>,
+    body_collision_history: &Vec<Vec<Vec<(usize, usize)>>>,
+    boundary_collision_history: &Vec<Vec<Vec<(usize, usize)>>>,
 ) {
     let simulation_data = serde_json::json!({
         "num_bodies": num_bodies,
@@ -530,12 +512,8 @@ fn write_simulation_data_to_json(
         "space_size_y": space_size_y,
         "total_time": total_time,
         "time_step": time_step,
-        "velocities_x": velocities_x,
-        "velocities_y": velocities_y,
         "radii": radii,
         "masses": masses,
-        "positions_x": positions_x,
-        "positions_y": positions_y,
         "velocity_history_x": velocity_history_x,
         "velocity_history_y": velocity_history_y,
         "position_history_x": position_history_x,
@@ -543,11 +521,11 @@ fn write_simulation_data_to_json(
         "body_collision_history": body_collision_history,
         "boundary_collision_history": boundary_collision_history
     });
-    
+
     // pretty
-    // let simulation_data_string = serde_json::to_string_pretty(&simulation_data).unwrap();
+    let simulation_data_string = serde_json::to_string_pretty(&simulation_data).unwrap();
     // not pretty
-    let simulation_data_string = serde_json::to_string(&simulation_data).unwrap();
+    // let simulation_data_string = serde_json::to_string(&simulation_data).unwrap();
     std::fs::write(file_name, simulation_data_string).unwrap();
 }
 
