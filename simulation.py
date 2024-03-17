@@ -1,8 +1,9 @@
-from abc import ABC, abstractmethod
 import torch
-import random
-import json
+from torch import Tensor
+from torch.distributions import Distribution
+from typing import Union, Callable
 
+import json
 
 class Body:
     def __init__(
@@ -76,157 +77,33 @@ class Body:
         return [Body.from_dict(body_dict) for body_dict in bodies_data]
 
 
-class Simulation(ABC):
-
+class Variables:
     def __init__(
         self,
-        space_size: torch.Tensor = torch.tensor([100, 100]),
-        enable_logging: bool = False,
-        total_time: float = 1000.0,
-        dt: float = 1.0,
+        masses: Tensor,
+        radii: Tensor,
+        starting_positions: Union[Tensor | None],
+        # initial_velocities: Tensor,
+        num_bodies: int,
+        space_size: Tensor,
     ):
-        self.space_size: torch.Tensor = space_size
-        self.bodies = self.initialize_bodies()
-        self.enable_logging: bool = enable_logging
-        self.total_time: float = total_time
-        self.dt: float = dt
-
-    @abstractmethod
-    def initialize_bodies(self) -> list[Body]:
-        """
-        Initialize the bodies (particles, balls, etc.) involved in the simulation.
-        This should return a list of `Body` instances.
-        """
-        pass
-
-    @abstractmethod
-    def handle_boundary_collision(self, body: Body, dt: float):
-        """
-        Handle the collision of a body with the boundaries of the space.
-        """
-        pass
-
-    @abstractmethod
-    def update(self, dt: float):
-        """
-        Update the simulation by a time step `dt`.
-        This should include moving the bodies and handling collisions.
-        """
-        pass
-
-    @staticmethod
-    @abstractmethod
-    def detect_collision(body_a: Body, body_b: Body) -> bool:
-        """
-        Determine if two bodies collide.
-        """
-        pass
-
-    @staticmethod
-    @abstractmethod
-    def update_velocity_elastic(body_a: Body, body_b: Body):
-        """
-        Update the velocities of two bodies after an elastic collision.
-        """
-        pass
-
-    @abstractmethod
-    def run_simulation(self):
-        """
-        Run the simulation for a total time of `total_time` with time steps of `dt`.
-        """
-        pass
-
-    @abstractmethod
-    def logger(self, to_log):
-        """
-        Log the simulation
-        """
-        pass
-
-
-class ElasticCollisionSimulation(Simulation):
-
-    def initialize_bodies(
+        self.masses = masses
+        self.radii = radii
+        self.num_bodies = num_bodies
+        self.space_size = space_size
+        self.starting_positions = starting_positions
+        
+class ElasticCollisionSimulation:
+    def __init__(
         self,
-        num_bodies=10,
-        min_radius=0.5,
-        max_radius=100.0,
-        max_initial_speed=5,
-    ) -> list[Body]:
-        bodies = []
-        for _ in range(num_bodies):
-            valid_position = False
-            while not valid_position:
-                radius = random.uniform(
-                    min_radius, max_radius
-                )  # Random radius within specified range
-                position = torch.tensor(
-                    [
-                        random.uniform(
-                            radius, self.space_size[0] - radius
-                        ),  # Ensure body is fully within bounds
-                        random.uniform(radius, self.space_size[1] - radius),
-                    ]
-                )
-                # Check for overlap with existing bodies
-                overlap = any(
-                    torch.linalg.norm(position - other_body.position)
-                    < (radius + other_body.radius)
-                    for other_body in bodies
-                )
-                if not overlap:
-                    valid_position = True
-                    velocity = torch.tensor(
-                        [
-                            random.uniform(-max_initial_speed, max_initial_speed),
-                            random.uniform(-max_initial_speed, max_initial_speed),
-                        ]
-                    )
-                    bodies.append(
-                        Body(
-                            position=position,
-                            velocity=velocity,
-                            mass=radius,
-                            radius=radius,
-                        )
-                    )
-        return bodies
-
-    def handle_boundary_collision(self, body: Body, dt: float):
-        for dim in range(2):
-            # If the body is going to move outside the space boundaries
-            if (
-                body.position[dim] - body.radius < 0
-                or body.position[dim] + body.radius > self.space_size[dim]
-            ):
-                # log collision with coordinates and time
-                self.logger(
-                    f"Collision detected between {body} and the boundary at time {dt}"
-                )
-                body.velocity[dim] = -body.velocity[
-                    dim
-                ]  # Reverse the velocity component
-
-    def update(self, dt: float):
-        # Detect and resolve collisions
-        n = len(self.bodies)
-        for i in range(n):
-            for j in range(i + 1, n):
-                if self.detect_collision(self.bodies[i], self.bodies[j]):
-                    # log collision with coordinates and time
-                    self.logger(
-                        f"Collision detected between {self.bodies[i]} and {self.bodies[j]} at time {dt}"
-                    )
-                    self.update_velocity_elastic(self.bodies[i], self.bodies[j])
-
-        # Update positions
-        for body in self.bodies:
-            self.handle_boundary_collision(body, dt)
-            body.position += body.velocity * dt
-            # Save the current position and velocity to the history
-            body.update_history()
-
+        variables: Variables,
+        enable_logging: bool = False,
+    ):
+        self.variables = variables
+        self.enable_logging = enable_logging
+        self.bodies = None
+    
+    
     @staticmethod
     def detect_collision(body_a: Body, body_b: Body) -> bool:
         distance = torch.linalg.norm(body_a.position - body_b.position)
@@ -263,123 +140,220 @@ class ElasticCollisionSimulation(Simulation):
             move_distance = separation_distance * 0.01  # fraction of overlap
             body_a.position -= unit_distance_vec * move_distance
             body_b.position += unit_distance_vec * move_distance
-
-    def run_simulation(self):
-        num_steps = int(self.total_time / self.dt)
-        for _ in range(num_steps):
-            self.update(self.dt)
+    
+    @staticmethod
+    def construct_bodies(starting_velocities: torch.Tensor, variables: Variables):
+        # construct bodies from variables and starting velocities
+        bodies = []
+        for i in range(variables.num_bodies):
+            bodies.append(
+                Body(
+                    position=variables.starting_positions[i],
+                    velocity=starting_velocities[i],
+                    mass=variables.masses[i],
+                    radius=variables.radii[i],
+                )
+            )
+        return bodies
+    
+    @staticmethod
+    def sample_initial_positions_without_overlap(variables: Variables, position_distribution: Distribution):
+        
+        accepted_positions = []
+        for i in range(variables.num_bodies):
+            
+            valid_position = False
+            while not valid_position:
+                sample_position = position_distribution.sample((2,))
+                
+                # check boudary conditions
+                if (
+                    sample_position[0] - variables.radii[i] < 0 # bottom boundary
+                    or sample_position[0] + variables.radii[i] > variables.space_size[0] # top boundary
+                    or sample_position[1] - variables.radii[i] < 0 # left boundary
+                    or sample_position[1] + variables.radii[i] > variables.space_size[1] # right boundary
+                ):
+                    continue
+                
+                # check overlap with other bodies
+                collision_detected = False
+                for j in range(len(accepted_positions)):
+                    if torch.linalg.norm(sample_position - accepted_positions[j]) < variables.radii[i] + variables.radii[j]:
+                        collision_detected = True
+                        break
+                
+                if collision_detected: continue
+                
+                # if we reach here, the position is valid
+                valid_position = True
+                accepted_positions.append(sample_position)
+        
+        return torch.stack(accepted_positions)
 
     def logger(self, to_log):
         if self.enable_logging:
             print(to_log)
         else:
             pass
-
-    def save_simulation_params(self, file_name="simulation_params.json"):
-        """
-        Save the simulation parameters to a JSON file.
-
-        :param file_name: Name of the file where the simulation will be saved.
-        """
-        with open(file_name, "w") as file:
-            # first save the parameters of the simulation
-            simulation_params = {
-                "space_size": self.space_size.tolist(),
-                "total_time": self.total_time,
-                "dt": self.dt,
-            }
-            json.dump(simulation_params, file, indent=4)
-
-
-def run_visualization_from_json(
-    file_name_params="simulation_params.json", file_name_bodies="bodies.json"
-):
-    import pygame
-    import sys
-
-    # Load simulation parameters
-    with open(file_name_params, "r") as f_params:
-        simulation_params = json.load(f_params)
-
-    # Initialize Pygame
-    pygame.init()
-
-    # Fixed window size
-    window_size = (800, 800)
-
-    # Compute the scale factor to fit the simulation space into the window
-    space_size = simulation_params["space_size"]
-    scale_factor_x = window_size[0] / space_size[0]
-    scale_factor_y = window_size[1] / space_size[1]
-    scale_factor = min(
-        scale_factor_x, scale_factor_y
-    )  # Ensure aspect ratio is maintained
-
-    # Set up the display
-    screen = pygame.display.set_mode(window_size)
-    pygame.display.set_caption("Elastic Collision Visualization")
-
-    # Define colors
-    background_color = (0, 0, 0)
-    ball_color = (255, 255, 255)
-
-    # Load bodies from JSON file
-    bodies = Body.load_bodies_from_json(file_name_bodies)
-    # Main animation loop setup
-    clock = pygame.time.Clock()
-    running = True
-    frame_rate = 100  # Frames per second
-
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-
-        screen.fill(background_color)  # Clear the screen
-
-        # Draw the balls
-        for body in bodies:
-            if len(body.position_history) > 0:
-                position = body.position_history.pop(0).numpy()
-                scaled_position = (
-                    int(position[0] * scale_factor),
-                    int(position[1] * scale_factor),
+        
+    def handle_boundary_collision(self, body: Body, dt: float):
+        for dim in range(2):
+            # If the body is going to move outside the space boundaries
+            if (
+                body.position[dim] - body.radius < 0
+                or body.position[dim] + body.radius > self.variables.space_size[dim]
+            ):
+                # log collision with coordinates and time
+                self.logger(
+                    f"Collision detected between {body} and the boundary at time {dt}"
                 )
-                pygame.draw.circle(
-                    screen, ball_color, scaled_position, int(body.radius * scale_factor)
-                )
+                body.velocity[dim] = -body.velocity[
+                    dim
+                ]  # Reverse the velocity component
 
-        pygame.display.flip()  # Update the display
-        clock.tick(frame_rate)  # Cap the frame rate
+    def update(self, dt: float):
+        # Detect and resolve collisions
+        n = len(self.bodies)
+        for i in range(n):
+            for j in range(i + 1, n):
+                if self.detect_collision(self.bodies[i], self.bodies[j]):
+                    # log collision with coordinates and time
+                    self.logger(
+                        f"Collision detected between {self.bodies[i]} and {self.bodies[j]} at time {dt}"
+                    )
+                    self.update_velocity_elastic(self.bodies[i], self.bodies[j])
 
-    pygame.quit()
-    sys.exit()
+        # Update positions
+        for body in self.bodies:
+            self.handle_boundary_collision(body, dt)
+            body.position += body.velocity * dt
+            # Save the current position and velocity to the history
+            body.update_history()
+    
+    def simulate(self, starting_velocities: torch.Tensor, total_time: float, dt: float):
+        self.bodies = self.construct_bodies(starting_velocities, self.variables)
+        
+        # simulate
+        num_steps = int(total_time / dt)
+        for i in range(num_steps):
+            self.update(dt)
+        
+        noise_distribution = torch.distributions.Normal(0, 0.5)
+        body_positions = torch.stack([body.position for body in self.bodies])
+        # apply noise to the final positions
+        body_positions_noised = body_positions + noise_distribution.sample(body_positions.shape)
+        return body_positions_noised
+        
+    def get_position_history(self):
+        return [body.position_history for body in self.bodies]
+    
+    def get_velocity_history(self):
+        return [body.velocity_history for body in self.bodies]
+        
+
+def distance(X: Tensor, X_obs: Tensor) -> Tensor:
+    """
+    Calculate the distance between the simulated data X and the observed data X_obs using PyTorch.
+    :param X: Simulated final position as a **tensor of shape (2,).**
+    :param X_obs: Observed final position as a **tensor of shape (2,).**
+    :return: The distance between X and X_obs as a tensor **of shape (1,).**
+    """
+    return torch.linalg.norm(X - X_obs)
+
+
+def sample_from_prior_velocities(amount: int) -> Tensor:
+    """
+    Sample a set of velocity vectors from the prior distribution for a given amount of bodies.
+    :param amount: The number of velocity vectors to sample.
+    :return: A tensor of shape (amount, 2), where each row is a 2D velocity vector [vx, vy].
+    """
+    prior_distribution = torch.distributions.Uniform(low=-2.0, high=2.0)
+    
+    # Sample `amount` times for each component
+    vx_samples = prior_distribution.sample(sample_shape=torch.Size([amount]))
+    vy_samples = prior_distribution.sample(sample_shape=torch.Size([amount]))
+    
+    # Combine into a single tensor of shape (amount, 2)
+    velocity_vectors = torch.stack([vx_samples, vy_samples], dim=1)
+    
+    
+    return velocity_vectors
+
+
+def ABC_Algo(
+    variables: Variables,
+    sample_from_prior: Callable[[int], Tensor],
+    X_obs: Tensor,
+    epsilon: float,
+    T: int,
+    total_time: float,
+    dt: float,
+) -> Tensor:
+    simulation = ElasticCollisionSimulation(variables, enable_logging=False)
+    
+    accepted_Y: list[Tensor] = []
+    accepted_X: list[Tensor] = []
+    
+    current_iteration = 0
+    while len(accepted_Y) < T:
+        current_iteration += 1
+        # if current_iteration % 10 == 0: print(f"Current iteration: {current_iteration}")
+        Y = sample_from_prior(variables.num_bodies)
+        X_sim = simulation.simulate(Y, total_time, dt)
+        if distance(X_sim, X_obs) <= epsilon:
+            accepted_Y.append(Y)
+            accepted_X.append(X_sim)
+    print(f"Total iterations: {current_iteration}")
+    return torch.stack(accepted_Y), torch.stack(accepted_X)
 
 
 if __name__ == "__main__":
+    
+    space_size = 10.0
+    max_radius = space_size // 5.0
+    constant_mass_value = 1.0
+    constant_radius_value = max_radius
+    
+    
+    velocity_distribution = torch.distributions.Uniform(low=-5.0, high=5.0)
+    position_distribution = torch.distributions.Uniform(low=0.0, high=space_size)
 
-    # simulation_time_step = 1.0  # Corresponds to the dt in your simulation
-    # frame_rate = 100  # Frames per second
-    # space_size = [1000, 1000]
+    # variant 1: sampling mass and radius from uniform distributions
+    """
+    mass_distribution = torch.distributions.Uniform(low=0.5, high=50.0)
+    radius_distribution = torch.distributions.Uniform(low=0.5, high=max_radius)
+    masses = mass_distribution.sample(sample_shape=torch.Size([num_bodies])),
+    radii = radius_distribution.sample(sample_shape=torch.Size([num_bodies])),
+    """
 
-    # # Create simulation instance
-    # simulation = ElasticCollisionSimulation(
-    #     total_time=10000.0,
-    #     dt=simulation_time_step,
-    #     space_size=torch.tensor(space_size),
-    #     enable_logging=False,
-    # )
-
-    # # Run the simulation separately to gather all positions before animating
-    # simulation.run_simulation()
-
-    # # save the simulation parameters to a JSON file
-    # simulation.save_simulation_params(file_name="simulation_params.json")
-
-    # # save the  bodies to a JSON file
-    # Body.save_bodies_to_json(simulation.bodies, file_name="bodies.json")
-
-    # Run the visualization
-    run_visualization_from_json(
-        file_name_params="simulation_params.json", file_name_bodies="bodies.json"
+    num_bodies = 2
+    VARIABLES = Variables(
+        masses = torch.full((num_bodies,), constant_mass_value),
+        radii = torch.full((num_bodies,), constant_radius_value),
+        starting_positions = None,
+        num_bodies = num_bodies,
+        space_size = torch.tensor([space_size, space_size]),
     )
+
+    initial_positions = ElasticCollisionSimulation.sample_initial_positions_without_overlap(VARIABLES, position_distribution)
+    VARIABLES.starting_positions = initial_positions
+    print(f"initial_positions: {initial_positions}")
+
+    initial_velocities = velocity_distribution.sample(sample_shape=torch.Size([num_bodies, 2]))
+    print(f"initial_velocities: {initial_velocities}")
+
+
+
+    # TODO: final positions instead of initial_velocities
+    accepted_Y, accepted_X = ABC_Algo(
+        variables=VARIABLES,
+        sample_from_prior= lambda amount: velocity_distribution.sample(sample_shape=([amount, 2])),
+        X_obs = initial_velocities,
+        epsilon = 1.0,
+        T = 1,
+        total_time = 1.0,
+        dt = 0.1,
+    )
+    print(f"accepted_X: {accepted_X}")
+    print(f"accepted_Y: {accepted_Y}")
+
