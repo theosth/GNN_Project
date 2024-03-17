@@ -3,6 +3,8 @@ from torch import Tensor
 from torch.distributions import Distribution
 from typing import Union, Callable
 
+import time
+
 from copy import deepcopy
 
 import sys
@@ -52,21 +54,27 @@ def ABC_Algo(
     accepted_X: list[Tensor] = []
     
     current_iteration = 0
+    start_time = time.time()  # Start timing
     while len(accepted_Y) < T:
         current_iteration += 1
 
         # if current_iteration % 10 == 0: print(f"Current iteration: {current_iteration}")
-        if current_iteration % 10 == 0:
-            print(f"Current iteration: {current_iteration}")
+        #if current_iteration % 10 == 0:
+            #print(f"Current iteration: {current_iteration}")
 
         Y = sample_from_prior(variables.num_bodies)
-        print("sampled Y: ", Y)
+        #print("sampled Y: ", Y)
         X_sim = simulation.simulate(Y, total_time, dt)
-        print("simulated X: ", X_sim)
+        #print("simulated X: ", X_sim)
         if distance(X_sim, X_obs) <= epsilon:
             accepted_Y.append(Y)
             accepted_X.append(X_sim)
+
+    end_time = time.time()  # End timing
+    elapsed_time = end_time - start_time  # Calculate elapsed time
+
     print(f"Total iterations: {current_iteration}")
+    print(f"time per iteration: {elapsed_time / current_iteration} seconds")
     return torch.stack(accepted_Y), torch.stack(accepted_X)
 
 
@@ -82,7 +90,7 @@ if __name__ == "__main__":
     velocity_distribution = torch.distributions.Uniform(low=-5.0, high=5.0)
     position_distribution = torch.distributions.Uniform(low=0.0, high=space_size)
 
-    num_bodies = 2
+    num_bodies = 4
     VARIABLES = Variables(
         masses = torch.full((num_bodies,), constant_mass_value),
         radii = torch.full((num_bodies,), constant_radius_value),
@@ -115,7 +123,7 @@ if __name__ == "__main__":
         variables=VARIABLES,
         sample_from_prior= lambda amount: velocity_distribution.sample(sample_shape=([amount, 2])),
         X_obs = final_positions,
-        epsilon = 1.0,
+        epsilon = 5.0,
         T = 1,
         total_time = 1.0,
         dt = 0.1,
