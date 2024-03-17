@@ -3,6 +3,8 @@ from torch import Tensor
 from torch.distributions import Distribution
 from typing import Union, Callable
 
+from copy import deepcopy
+
 import json
 
 class Body:
@@ -189,7 +191,7 @@ class ElasticCollisionSimulation:
                 valid_position = True
                 accepted_positions.append(sample_position)
         
-        return torch.stack(accepted_positions)
+        return torch.stack(deepcopy(accepted_positions))
 
     def logger(self, to_log):
         if self.enable_logging:

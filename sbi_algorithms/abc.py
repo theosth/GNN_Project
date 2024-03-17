@@ -3,6 +3,8 @@ from torch import Tensor
 from torch.distributions import Distribution
 from typing import Union, Callable
 
+from copy import deepcopy
+
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -58,7 +60,9 @@ def ABC_Algo(
             print(f"Current iteration: {current_iteration}")
 
         Y = sample_from_prior(variables.num_bodies)
+        print("sampled Y: ", Y)
         X_sim = simulation.simulate(Y, total_time, dt)
+        print("simulated X: ", X_sim)
         if distance(X_sim, X_obs) <= epsilon:
             accepted_Y.append(Y)
             accepted_X.append(X_sim)
@@ -88,8 +92,9 @@ if __name__ == "__main__":
     )
 
     initial_positions = ElasticCollisionSimulation.sample_initial_positions_without_overlap(VARIABLES, position_distribution)
-    VARIABLES.starting_positions = initial_positions
+    VARIABLES.starting_positions = deepcopy(initial_positions)
     print(f"initial_positions: {initial_positions}")
+    true_initial_positions = deepcopy(initial_positions)
     initial_velocities = velocity_distribution.sample(sample_shape=torch.Size([num_bodies, 2]))
     print(f"initial_velocities: {initial_velocities}")
 
@@ -106,7 +111,7 @@ if __name__ == "__main__":
 
     ### 3. Running the ABC algorithm
     # TODO: final positions instead of initial_velocities
-    accepted_Y, accepted_X = ABC_Algo(
+    accepted_Y_, accepted_X_ = ABC_Algo(
         variables=VARIABLES,
         sample_from_prior= lambda amount: velocity_distribution.sample(sample_shape=([amount, 2])),
         X_obs = final_positions,
@@ -115,9 +120,10 @@ if __name__ == "__main__":
         total_time = 1.0,
         dt = 0.1,
     )
-    print(f"accepted_X (sampled: resulting positions): {accepted_X}")
-    print(f"accepted_Y (sampled: initial velocities): {accepted_Y}")
+    print(f"SIM: accepted_X (final positions): {accepted_X_}")
+    print(f"SIM: accepted_Y (initial velocities): {accepted_Y_}")
     print("--------------------------------------------------------")
-    print(f"initial_positions: {initial_positions}")
-    print(f"initial_velocities: {initial_velocities}")
+    print(f"OBS: initial_positions: {initial_positions}")
+    print(f"OBS: final_positions: {final_positions}")
+    print(f"OBS: initial_velocities: {initial_velocities}")
 
