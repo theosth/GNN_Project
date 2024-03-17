@@ -185,7 +185,12 @@ def main():
     accepted_Y = ABC(phi, sample_from_prior_velocity, noise_dist, X_obs, epsilon, N, total_time, num_bodies, dt)
 
     # Print the accepted samples
+
+    § sample_from_prior_velocity)5
     print(accepted_Y)
 
 if __name__ == "__main__":
-    main()
+    main()#
+
+
+    main()    § so

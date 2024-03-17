@@ -3,6 +3,8 @@ from torch import Tensor
 from torch.distributions import Distribution
 from typing import Union, Callable
 
+import json
+
 class Body:
     def __init__(
         self,
@@ -22,6 +24,58 @@ class Body:
         """Save the current position and velocity to the history."""
         self.position_history.append(self.position.clone())
         self.velocity_history.append(self.velocity.clone())
+
+    def __repr__(self):
+        return f"Body(position={self.position}, velocity={self.velocity}, mass={self.mass}, radius={self.radius})"
+
+    def to_dict(self):
+        """Convert the Body instance into a dictionary for JSON serialization."""
+        return {
+            "position": self.position.tolist(),  # Convert tensors to lists
+            "velocity": self.velocity.tolist(),
+            "mass": self.mass,  # Convert tensor scalar to Python scalar
+            "radius": self.radius,
+            "position_history": [p.tolist() for p in self.position_history],
+            "velocity_history": [v.tolist() for v in self.velocity_history],
+        }
+
+    @staticmethod
+    def from_dict(data):
+        """Reconstruct a Body instance from a dictionary."""
+        body = Body(
+            position=torch.tensor(data["position"]),
+            velocity=torch.tensor(data["velocity"]),
+            mass=torch.tensor(data["mass"]),
+            radius=torch.tensor(data["radius"]),
+        )
+        body.position_history = [torch.tensor(p) for p in data["position_history"]]
+        body.velocity_history = [torch.tensor(v) for v in data["velocity_history"]]
+        return body
+
+    @staticmethod
+    def save_bodies_to_json(bodies, file_name="bodies.json"):
+        """
+        Save the list of bodies, including their histories, to a JSON file.
+
+        :param bodies: List of Body instances to be saved.
+        :param file_name: Name of the file where the bodies will be saved.
+        """
+        with open(file_name, "w") as file:
+            # Convert each Body instance to a dictionary and save
+            json.dump([body.to_dict() for body in bodies], file, indent=4)
+
+    @staticmethod
+    def load_bodies_from_json(file_name="bodies.json"):
+        """
+        Load the list of bodies from a JSON file.
+
+        :param file_name: Name of the file from which to load the bodies.
+        :return: List of Body instances loaded from the file.
+        """
+        with open(file_name, "r") as file:
+            bodies_data = json.load(file)
+        return [Body.from_dict(body_dict) for body_dict in bodies_data]
+
 
 class Variables:
     def __init__(
@@ -176,7 +230,6 @@ class ElasticCollisionSimulation:
             # Save the current position and velocity to the history
             body.update_history()
     
-    
     def simulate(self, starting_velocities: torch.Tensor, total_time: float, dt: float):
         self.bodies = self.construct_bodies(starting_velocities, self.variables)
         
@@ -191,6 +244,11 @@ class ElasticCollisionSimulation:
         body_positions_noised = body_positions + noise_distribution.sample(body_positions.shape)
         return body_positions_noised
         
+    def get_position_history(self):
+        return [body.position_history for body in self.bodies]
+    
+    def get_velocity_history(self):
+        return [body.velocity_history for body in self.bodies]
         
 
 def distance(X: Tensor, X_obs: Tensor) -> Tensor:
@@ -252,18 +310,26 @@ def ABC_Algo(
 if __name__ == "__main__":
     
     space_size = 10.0
-    max_radius = space_size // 10.0
+    max_radius = space_size // 5.0
+    constant_mass_value = 1.0
+    constant_radius_value = max_radius
     
     
     velocity_distribution = torch.distributions.Uniform(low=-5.0, high=5.0)
-    radius_distribution = torch.distributions.Uniform(low=0.5, high=max_radius)
-    mass_distribution = torch.distributions.Uniform(low=0.5, high=50.0)
     position_distribution = torch.distributions.Uniform(low=0.0, high=space_size)
+
+    # variant 1: sampling mass and radius from uniform distributions
+    """
+    mass_distribution = torch.distributions.Uniform(low=0.5, high=50.0)
+    radius_distribution = torch.distributions.Uniform(low=0.5, high=max_radius)
+    masses = mass_distribution.sample(sample_shape=torch.Size([num_bodies])),
+    radii = radius_distribution.sample(sample_shape=torch.Size([num_bodies])),
+    """
 
     num_bodies = 2
     VARIABLES = Variables(
-        masses = mass_distribution.sample(sample_shape=torch.Size([num_bodies])),
-        radii = radius_distribution.sample(sample_shape=torch.Size([num_bodies])),
+        masses = torch.full((num_bodies,), constant_mass_value),
+        radii = torch.full((num_bodies,), constant_radius_value),
         starting_positions = None,
         num_bodies = num_bodies,
         space_size = torch.tensor([space_size, space_size]),
@@ -276,6 +342,9 @@ if __name__ == "__main__":
     initial_velocities = velocity_distribution.sample(sample_shape=torch.Size([num_bodies, 2]))
     print(f"initial_velocities: {initial_velocities}")
 
+
+
+    # TODO: final positions instead of initial_velocities
     accepted_Y, accepted_X = ABC_Algo(
         variables=VARIABLES,
         sample_from_prior= lambda amount: velocity_distribution.sample(sample_shape=([amount, 2])),
