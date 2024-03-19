@@ -1,5 +1,6 @@
 // use rand::{Rng, thread_rng};
-use rand::distributions::{Distribution, Uniform};
+// use rand::distributions::{Distribution, Uniform};
+use rand_distr::{Normal, Distribution, Uniform};
 use rand::thread_rng;
 use serde_json;
 
@@ -8,7 +9,7 @@ fn sample_initial_positions(
     space_size_x: f64,
     space_size_y: f64,
     radii: &Vec<f64>,
-    positions_distribution: &Uniform<f64>,
+    positions_distribution: impl Distribution<f64>,
 ) -> (Vec<f64>, Vec<f64>) {
     let mut rng = thread_rng();
     let mut positions_x: Vec<f64> = Vec::new();
@@ -283,10 +284,10 @@ fn run_abc(
     space_size_y: f64,
     total_time: f64,
     time_step: f64,
-    velocity_distribution: Uniform<f64>,
-    radius_distribution: Uniform<f64>,
-    mass_distribution: Uniform<f64>,
-    position_distribution: Uniform<f64>,
+    velocity_distribution: &impl Distribution<f64>,
+    radius_distribution: &impl Distribution<f64>,
+    mass_distribution: &impl Distribution<f64>,
+    position_distribution: &impl Distribution<f64>,
     n: usize,
     epsilon: f64,
     include_velocities_in_error: bool,
@@ -548,15 +549,15 @@ fn main() {
     let num_bodies = 2;
     let space_size_x = 10.0;
     let space_size_y = 10.0;
-    let total_time = 3.0;
+    let total_time = 10.0;
     let time_step = 0.01;
-    let velocity_distribution = Uniform::new(-5.0, 5.0).unwrap();
-    let radius_distribution = Uniform::new(1.0, 2.0).unwrap();
-    let mass_distribution = Uniform::new(1.0, 50.0).unwrap();
-    let position_distribution = Uniform::new(0.0, space_size_x).unwrap();
-    let n = 1;
-    let epsilon = 1.0;
-    let include_velocities_in_error = true;
+    let velocity_distribution = Normal::new(5.0, 5.0).unwrap();
+    let radius_distribution = Uniform::new(1.0, 2.0);
+    let mass_distribution = Uniform::new(1.0, 50.0);
+    let position_distribution = Normal::new(space_size_x/2.0, space_size_x/2.0).unwrap();
+    let n = 10;
+    let epsilon = 0.5;
+    let include_velocities_in_error = false;
 
     let time = std::time::Instant::now();
     let (original_states_simulation_data, accepted_states_simulation_data, abc_data) = run_abc(
@@ -565,10 +566,10 @@ fn main() {
         space_size_y,
         total_time,
         time_step,
-        velocity_distribution,
-        radius_distribution,
-        mass_distribution,
-        position_distribution,
+        &velocity_distribution,
+        &radius_distribution,
+        &mass_distribution,
+        &position_distribution,
         n,
         epsilon,
         include_velocities_in_error,
