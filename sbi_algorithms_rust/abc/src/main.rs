@@ -550,16 +550,15 @@ fn write_simulation_data_to_json(file_name: &str, simulation_data: &SimulationDa
 }
 
 fn main() {
-    let num_bodies = 2;
+    let num_bodies = 4;
     let space_size_x = 10.0;
     let space_size_y = 10.0;
-    let total_time = 3.0;
+    let total_time = 10.0;
     let time_step = 0.01;
     // let velocity_distribution = Normal::new(0.0, 5.0).unwrap();
     let velocity_distribution = Uniform::new(-5.0, 5.0);
-    // let radius_distribution = Uniform::new(1.0, 2.0);
-    let radius_distribution = Normal::new(space_size_x/num_bodies as f64, space_size_x/num_bodies as f64).unwrap();
-    let mass_distribution = Uniform::new(1.0, 50.0);
+    let radius_distribution = Uniform::new(1.5, 1.6);
+    let mass_distribution = Uniform::new(1.0, 1.1);
     // let position_distribution = Normal::new(space_size_x/2.0, space_size_x/2.0).unwrap();
     let position_distribution = Uniform::new(0.0, space_size_x);
     let n = 1;
@@ -619,6 +618,8 @@ fn main() {
     println!("final accepted velocities x: {:?}", accepted_states_simulation_data.velocity_history_x[0].last().unwrap());
     println!("final accepted velocities y: {:?}", accepted_states_simulation_data.velocity_history_y[0].last().unwrap());
     println!("accepted error values: {:?}", abc_data.errors_values);
-    println!("collisions amount in original states: {:?}", original_states_simulation_data.body_collision_history[0][0].len());
-    println!("collisions amount in accepted states: {:?}", accepted_states_simulation_data.body_collision_history[0][0].len());
+    // to get the amount of collisions the simulations 
+    // flatten the collision history and get the length of the resulting vector
+    println!("collisions amount in original states: {:?}", original_states_simulation_data.body_collision_history[0].iter().flatten().count());
+    println!("collisions amount in accepted states: {:?}", accepted_states_simulation_data.body_collision_history[0].iter().flatten().count());
 }
