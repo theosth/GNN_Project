@@ -255,10 +255,10 @@ fn simulate(
 }
 
 fn run_abc() {
-    let num_bodies = 4;
+    let num_bodies = 2;
     let space_size_x = 10.0;
     let space_size_y = 10.0;
-    let total_time = 1.0;
+    let total_time = 10.0;
     let time_step = 0.01;
 
     let mut rng = rand::thread_rng();
@@ -334,7 +334,7 @@ fn run_abc() {
     );
 
     // abc algorithm
-    let n = 10;
+    let n = 1;
     let epsilon = 1.0;
 
     let mut accepted_states = 0;
@@ -418,12 +418,20 @@ fn run_abc() {
         );
 
         // calculate the error
+        // Option: Include final velocities in the error calculation
+        let include_velocities = true;
         // ! TODO: this is probably not the best way to calculate the error
+        // Sum of squared differences between final and current positions
         let mut error: f64 = 0.0;
         for i in 0..num_bodies {
             error += (final_positions_x[i] - current_positions_x[i]).powi(2);
             error += (final_positions_y[i] - current_positions_y[i]).powi(2);
+            if include_velocities {
+                error += (velocities_x[i] - current_velocities_x[i]).powi(2);
+                error += (velocities_y[i] - current_velocities_y[i]).powi(2);
+            }
         }
+        error /= num_bodies as f64;
         error = error.sqrt();
 
         // if the error is less than epsilon, accept the state
@@ -456,14 +464,14 @@ fn run_abc() {
     // in seconds
     println!("time per iteration in seconds: {:?}", start.elapsed().as_secs_f64()/current_iteration as f64);
 
-    // println!("final original positions x: {:?}", final_positions_x);
-    // println!("final original positions y: {:?}", final_positions_y);
-    // println!("accepted positions x: {:?}", accepted_positions_x);
-    // println!("accepted positions y: {:?}", accepted_positions_y);
-    // println!("original velocities x: {:?}", velocities_x);
-    // println!("original velocities y: {:?}", velocities_y);
-    // println!("accepted velocities x: {:?}", accepted_velocities_x);
-    // println!("accepted velocities y: {:?}", accepted_velocities_y);
+    println!("final original positions x: {:?}", final_positions_x);
+    println!("final original positions y: {:?}", final_positions_y);
+    println!("accepted positions x: {:?}", accepted_positions_x);
+    println!("accepted positions y: {:?}", accepted_positions_y);
+    println!("original velocities x: {:?}", velocities_x);
+    println!("original velocities y: {:?}", velocities_y);
+    println!("accepted velocities x: {:?}", accepted_velocities_x);
+    println!("accepted velocities y: {:?}", accepted_velocities_y);
 
     write_simulation_data_to_json(
         "data/original_simulation_data.json",
