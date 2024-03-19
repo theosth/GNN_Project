@@ -254,18 +254,44 @@ fn simulate(
     }
 }
 
-fn run_abc() {
-    let num_bodies = 2;
-    let space_size_x = 10.0;
-    let space_size_y = 10.0;
-    let total_time = 10.0;
-    let time_step = 0.01;
+// return values of ABC function
+struct SimulationData {
+    num_bodies: usize,
+    space_size_x: f64,
+    space_size_y: f64,
+    total_time: f64,
+    time_step: f64,
+    radii: Vec<f64>,
+    masses: Vec<f64>,
+    velocity_history_x: Vec<Vec<Vec<f64>>>,
+    velocity_history_y: Vec<Vec<Vec<f64>>>,
+    position_history_x: Vec<Vec<Vec<f64>>>,
+    position_history_y: Vec<Vec<Vec<f64>>>,
+    body_collision_history: Vec<Vec<Vec<(usize, usize)>>>,
+    boundary_collision_history: Vec<Vec<Vec<(usize, usize)>>>,
+}
+struct AbcData {
+    errors_values: Vec<f64>,
+    num_iterations: usize,
+}
 
+// ABC algorithm
+// modify to take parameters as input
+fn run_abc(
+    num_bodies: usize,
+    space_size_x: f64,
+    space_size_y: f64,
+    total_time: f64,
+    time_step: f64,
+    velocity_distribution: Uniform<f64>,
+    radius_distribution: Uniform<f64>,
+    mass_distribution: Uniform<f64>,
+    position_distribution: Uniform<f64>,
+    n: usize,
+    epsilon: f64,
+    include_velocities_in_error: bool,
+) -> (SimulationData, SimulationData, AbcData) {
     let mut rng = rand::thread_rng();
-    let velocity_distribution = Uniform::new(-5.0, 5.0).unwrap();
-    let radius_distribution = Uniform::new(1.0, 2.0).unwrap();
-    let mass_distribution = Uniform::new(1.0, 50.0).unwrap();
-    let position_distribution = Uniform::new(0.0, space_size_x).unwrap();
 
     // first initialize the bodies
     let mut velocities_x: Vec<f64> = velocity_distribution
@@ -333,10 +359,6 @@ fn run_abc() {
         &mut boundary_collision_history,
     );
 
-    // abc algorithm
-    let n = 1;
-    let epsilon = 1.0;
-
     let mut accepted_states = 0;
     let mut accepted_velocities_x: Vec<Vec<f64>> = Vec::new();
     let mut accepted_velocities_y: Vec<Vec<f64>> = Vec::new();
@@ -350,6 +372,8 @@ fn run_abc() {
     // get collision history of accepted states
     let mut accepted_body_collision_history: Vec<Vec<Vec<(usize, usize)>>> = Vec::new();
     let mut accepted_boundary_collision_history: Vec<Vec<Vec<(usize, usize)>>> = Vec::new();
+    // save error values
+    let mut accepted_error_values: Vec<f64> = Vec::new();
 
     let mut current_positions_x: Vec<f64>;
     let mut current_positions_y: Vec<f64>;
@@ -365,8 +389,6 @@ fn run_abc() {
     let mut current_boundary_collision_history: Vec<Vec<(usize, usize)>>;
 
     let mut current_iteration: usize = 0;
-
-    let start = std::time::Instant::now(); // measure time
 
     while accepted_states < n {
         // clone initial states so that we can revert to them if the state is not accepted
@@ -418,15 +440,11 @@ fn run_abc() {
         );
 
         // calculate the error
-        // Option: Include final velocities in the error calculation
-        let include_velocities = true;
-        // ! TODO: this is probably not the best way to calculate the error
-        // Sum of squared differences between final and current positions
         let mut error: f64 = 0.0;
         for i in 0..num_bodies {
             error += (final_positions_x[i] - current_positions_x[i]).powi(2);
             error += (final_positions_y[i] - current_positions_y[i]).powi(2);
-            if include_velocities {
+            if include_velocities_in_error {
                 error += (velocities_x[i] - current_velocities_x[i]).powi(2);
                 error += (velocities_y[i] - current_velocities_y[i]).powi(2);
             }
@@ -450,104 +468,143 @@ fn run_abc() {
             // append collision history
             accepted_body_collision_history.push(current_body_collision_history.clone());
             accepted_boundary_collision_history.push(current_boundary_collision_history.clone());
+            // append error value
+            accepted_error_values.push(error);
         }
 
         current_iteration += 1;
     }
-    println!("total iterations: {}", current_iteration);
-    println!("time: {:?}", start.elapsed());
-    // time per iteration
-    println!(
-        "time per iteration: {:?}",
-        start.elapsed() / current_iteration as u32
-    );
-    // in seconds
-    println!("time per iteration in seconds: {:?}", start.elapsed().as_secs_f64()/current_iteration as f64);
 
-    println!("final original positions x: {:?}", final_positions_x);
-    println!("final original positions y: {:?}", final_positions_y);
-    println!("accepted positions x: {:?}", accepted_positions_x);
-    println!("accepted positions y: {:?}", accepted_positions_y);
-    println!("original velocities x: {:?}", velocities_x);
-    println!("original velocities y: {:?}", velocities_y);
-    println!("accepted velocities x: {:?}", accepted_velocities_x);
-    println!("accepted velocities y: {:?}", accepted_velocities_y);
-
-    write_simulation_data_to_json(
-        "data/original_simulation_data.json",
+    let original_states_simulation_data = SimulationData {
         num_bodies,
         space_size_x,
         space_size_y,
         total_time,
         time_step,
-        &radii,
-        &masses,
-        // put into vec to match the format of the accepted data
-        &vec![velocity_history_x.clone()],
-        &vec![velocity_history_y.clone()],
-        &vec![position_history_x.clone()],
-        &vec![position_history_y.clone()],
-        &vec![body_collision_history.clone()],
-        &vec![boundary_collision_history.clone()],
-    );
+        radii: radii.clone(),
+        masses: masses.clone(),
+        velocity_history_x: vec![velocity_history_x],
+        velocity_history_y: vec![velocity_history_y],
+        position_history_x: vec![position_history_x],
+        position_history_y: vec![position_history_y],
+        body_collision_history: vec![body_collision_history],
+        boundary_collision_history: vec![boundary_collision_history],
+    };
 
-    write_simulation_data_to_json(
-        "data/accepted_simulation_data.json",
+    let accepted_states_simulation_data = SimulationData {
         num_bodies,
         space_size_x,
         space_size_y,
         total_time,
         time_step,
-        &radii,
-        &masses,
-        &accepted_velocity_history_x,
-        &accepted_velocity_history_y,
-        &accepted_position_history_x,
-        &accepted_position_history_y,
-        &accepted_body_collision_history,
-        &accepted_boundary_collision_history,
+        radii: radii,
+        masses: masses,
+        velocity_history_x: accepted_velocity_history_x,
+        velocity_history_y: accepted_velocity_history_y,
+        position_history_x: accepted_position_history_x,
+        position_history_y: accepted_position_history_y,
+        body_collision_history: accepted_body_collision_history,
+        boundary_collision_history: accepted_boundary_collision_history,
+    };
+
+    let general_abc_data = AbcData {
+        errors_values: accepted_error_values,
+        num_iterations: current_iteration,
+    };
+
+    return (
+        original_states_simulation_data,
+        accepted_states_simulation_data,
+        general_abc_data,
     );
 }
 
-fn write_simulation_data_to_json(
-    file_name: &str,
-    num_bodies: usize,
-    space_size_x: f64,
-    space_size_y: f64,
-    total_time: f64,
-    time_step: f64,
-    radii: &Vec<f64>,
-    masses: &Vec<f64>,
-    velocity_history_x: &Vec<Vec<Vec<f64>>>,
-    velocity_history_y: &Vec<Vec<Vec<f64>>>,
-    position_history_x: &Vec<Vec<Vec<f64>>>,
-    position_history_y: &Vec<Vec<Vec<f64>>>,
-    body_collision_history: &Vec<Vec<Vec<(usize, usize)>>>,
-    boundary_collision_history: &Vec<Vec<Vec<(usize, usize)>>>,
-) {
-    let simulation_data = serde_json::json!({
-        "num_bodies": num_bodies,
-        "space_size_x": space_size_x,
-        "space_size_y": space_size_y,
-        "total_time": total_time,
-        "time_step": time_step,
-        "radii": radii,
-        "masses": masses,
-        "velocity_history_x": velocity_history_x,
-        "velocity_history_y": velocity_history_y,
-        "position_history_x": position_history_x,
-        "position_history_y": position_history_y,
-        "body_collision_history": body_collision_history,
-        "boundary_collision_history": boundary_collision_history
+// use struct simulation data
+fn write_simulation_data_to_json(file_name: &str, simulation_data: &SimulationData) {
+    let data = serde_json::json!({
+        "num_bodies": simulation_data.num_bodies,
+        "space_size_x": simulation_data.space_size_x,
+        "space_size_y": simulation_data.space_size_y,
+        "total_time": simulation_data.total_time,
+        "time_step": simulation_data.time_step,
+        "radii": simulation_data.radii,
+        "masses": simulation_data.masses,
+        "velocity_history_x": simulation_data.velocity_history_x,
+        "velocity_history_y": simulation_data.velocity_history_y,
+        "position_history_x": simulation_data.position_history_x,
+        "position_history_y": simulation_data.position_history_y,
+        "body_collision_history": simulation_data.body_collision_history,
+        "boundary_collision_history": simulation_data.boundary_collision_history
     });
 
     // pretty
-    let simulation_data_string = serde_json::to_string_pretty(&simulation_data).unwrap();
+    let data_string = serde_json::to_string_pretty(&data).unwrap();
     // not pretty
-    // let simulation_data_string = serde_json::to_string(&simulation_data).unwrap();
-    std::fs::write(file_name, simulation_data_string).unwrap();
+    // let data_string = serde_json::to_string(&data_string).unwrap();
+    std::fs::write(file_name, data_string).unwrap();
 }
 
 fn main() {
-    run_abc();
+    let num_bodies = 2;
+    let space_size_x = 10.0;
+    let space_size_y = 10.0;
+    let total_time = 3.0;
+    let time_step = 0.01;
+    let velocity_distribution = Uniform::new(-5.0, 5.0).unwrap();
+    let radius_distribution = Uniform::new(1.0, 2.0).unwrap();
+    let mass_distribution = Uniform::new(1.0, 50.0).unwrap();
+    let position_distribution = Uniform::new(0.0, space_size_x).unwrap();
+    let n = 1;
+    let epsilon = 1.0;
+    let include_velocities_in_error = true;
+
+    let time = std::time::Instant::now();
+    let (original_states_simulation_data, accepted_states_simulation_data, abc_data) = run_abc(
+        num_bodies,
+        space_size_x,
+        space_size_y,
+        total_time,
+        time_step,
+        velocity_distribution,
+        radius_distribution,
+        mass_distribution,
+        position_distribution,
+        n,
+        epsilon,
+        include_velocities_in_error,
+    );
+    let elapsed = time.elapsed();
+
+    write_simulation_data_to_json(
+        "data/original_simulation_data.json",
+        &original_states_simulation_data,
+    );
+    write_simulation_data_to_json(
+        "data/accepted_simulation_data.json",
+        &accepted_states_simulation_data,
+    );
+
+    println!("total iterations: {}", abc_data.num_iterations);
+    println!("time: {:?}", elapsed);
+    // time per iteration
+    println!(
+        "time per iteration: {:?}",
+        elapsed / abc_data.num_iterations as u32
+    );
+    // in seconds
+    println!(
+        "time per iteration in seconds: {:?}",
+        elapsed.as_secs_f64() / abc_data.num_iterations as f64
+    );
+    
+    // Some print statements to check the results
+    println!("final original positions x: {:?}", original_states_simulation_data.position_history_x[0][0]);
+    println!("final original positions y: {:?}", original_states_simulation_data.position_history_y[0][0]);
+    println!("accepted positions x: {:?}", accepted_states_simulation_data.position_history_x[0][0]);
+    println!("accepted positions y: {:?}", accepted_states_simulation_data.position_history_y[0][0]);
+    println!("original velocities x: {:?}", original_states_simulation_data.velocity_history_x[0][0]);
+    println!("original velocities y: {:?}", original_states_simulation_data.velocity_history_y[0][0]);
+    println!("accepted velocities x: {:?}", accepted_states_simulation_data.velocity_history_x[0][0]);
+    println!("accepted velocities y: {:?}", accepted_states_simulation_data.velocity_history_y[0][0]);
+    println!("accepted error values: {:?}", abc_data.errors_values);
 }
