@@ -391,6 +391,7 @@ fn run_abc(
 
     let mut current_iteration: usize = 0;
 
+    println!("starting abc loop");
     while accepted_states < n {
         // clone initial states so that we can revert to them if the state is not accepted
         current_positions_x = positions_x.clone();
@@ -449,6 +450,9 @@ fn run_abc(
                 error += (velocities_x[i] - current_velocities_x[i]).powi(2);
                 error += (velocities_y[i] - current_velocities_y[i]).powi(2);
             }
+        }
+        if include_velocities_in_error {
+            error /= 2.0
         }
         error /= num_bodies as f64;
         error = error.sqrt();
@@ -549,14 +553,17 @@ fn main() {
     let num_bodies = 2;
     let space_size_x = 10.0;
     let space_size_y = 10.0;
-    let total_time = 10.0;
+    let total_time = 3.0;
     let time_step = 0.01;
-    let velocity_distribution = Normal::new(5.0, 5.0).unwrap();
-    let radius_distribution = Uniform::new(1.0, 2.0);
+    // let velocity_distribution = Normal::new(0.0, 5.0).unwrap();
+    let velocity_distribution = Uniform::new(-5.0, 5.0);
+    // let radius_distribution = Uniform::new(1.0, 2.0);
+    let radius_distribution = Normal::new(space_size_x/num_bodies as f64, space_size_x/num_bodies as f64).unwrap();
     let mass_distribution = Uniform::new(1.0, 50.0);
-    let position_distribution = Normal::new(space_size_x/2.0, space_size_x/2.0).unwrap();
-    let n = 10;
-    let epsilon = 0.5;
+    // let position_distribution = Normal::new(space_size_x/2.0, space_size_x/2.0).unwrap();
+    let position_distribution = Uniform::new(0.0, space_size_x);
+    let n = 1;
+    let epsilon = 1.0;
     let include_velocities_in_error = false;
 
     let time = std::time::Instant::now();
@@ -599,13 +606,19 @@ fn main() {
     );
     
     // Some print statements to check the results
-    println!("final original positions x: {:?}", original_states_simulation_data.position_history_x[0][0]);
-    println!("final original positions y: {:?}", original_states_simulation_data.position_history_y[0][0]);
-    println!("accepted positions x: {:?}", accepted_states_simulation_data.position_history_x[0][0]);
-    println!("accepted positions y: {:?}", accepted_states_simulation_data.position_history_y[0][0]);
+    println!("final original positions x: {:?}", original_states_simulation_data.position_history_x[0].last().unwrap());
+    println!("final original positions y: {:?}", original_states_simulation_data.position_history_y[0].last().unwrap());
+    println!("accepted positions x: {:?}", accepted_states_simulation_data.position_history_x[0].last().unwrap());
+    println!("accepted positions y: {:?}", accepted_states_simulation_data.position_history_y[0].last().unwrap());
     println!("original velocities x: {:?}", original_states_simulation_data.velocity_history_x[0][0]);
     println!("original velocities y: {:?}", original_states_simulation_data.velocity_history_y[0][0]);
     println!("accepted velocities x: {:?}", accepted_states_simulation_data.velocity_history_x[0][0]);
     println!("accepted velocities y: {:?}", accepted_states_simulation_data.velocity_history_y[0][0]);
+    println!("final original velocities x: {:?}", original_states_simulation_data.velocity_history_x[0].last().unwrap());
+    println!("final original velocities y: {:?}", original_states_simulation_data.velocity_history_y[0].last().unwrap());
+    println!("final accepted velocities x: {:?}", accepted_states_simulation_data.velocity_history_x[0].last().unwrap());
+    println!("final accepted velocities y: {:?}", accepted_states_simulation_data.velocity_history_y[0].last().unwrap());
     println!("accepted error values: {:?}", abc_data.errors_values);
+    println!("collisions amount in original states: {:?}", original_states_simulation_data.body_collision_history[0][0].len());
+    println!("collisions amount in accepted states: {:?}", accepted_states_simulation_data.body_collision_history[0][0].len());
 }
