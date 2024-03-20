@@ -12,11 +12,13 @@ class Body:
         self,
         position: torch.Tensor,
         velocity: torch.Tensor,
+        acceleration_coefficient: torch.Tensor,
         mass: torch.float64,
         radius: torch.float64,
     ):
         self.position: torch.Tensor = position
         self.velocity: torch.Tensor = velocity
+        self.acceleration_coefficient: torch.Tensor = acceleration_coefficient
         self.mass: torch.float64 = mass
         self.radius: torch.float64 = radius
         self.position_history: list[torch.Tensor] = []
@@ -36,6 +38,7 @@ class Body:
             "position": self.position.tolist(),  # Convert tensors to lists
             "velocity": self.velocity.tolist(),
             "mass": self.mass,  # Convert tensor scalar to Python scalar
+            "acceleration_coefficient": self.acceleration_coefficient,
             "radius": self.radius,
             "position_history": [p.tolist() for p in self.position_history],
             "velocity_history": [v.tolist() for v in self.velocity_history],
@@ -47,6 +50,7 @@ class Body:
         body = Body(
             position=torch.tensor(data["position"]),
             velocity=torch.tensor(data["velocity"]),
+            acceleration_coefficient=torch.tensor(data["acceleration_coefficient"]),
             mass=torch.tensor(data["mass"]),
             radius=torch.tensor(data["radius"]),
         )
@@ -81,11 +85,12 @@ class Body:
 class Variables:
     def __init__(
         self,
-        masses: Tensor,
-        radii: Tensor,
+        masses: Union[Tensor | None],
+        radii: Union[Tensor | None],
+        acceleration_coefficients: Union[Tensor | None],
         starting_positions: Union[Tensor | None],
-        # initial_velocities: Tensor,
-        num_bodies: int,
+        initial_velocities: Union[Tensor | None],
+        num_bodies: int | None,
         space_size: Tensor,
     ):
         self.masses = masses
@@ -93,6 +98,24 @@ class Variables:
         self.num_bodies = num_bodies
         self.space_size = space_size
         self.starting_positions = starting_positions
+        self.acceleration_coefficients = acceleration_coefficients
+        self.initial_velocities = initial_velocities
+
+class HiddenVariables:
+    def __init__(
+        self,
+        num_bodies: int | None,
+        masses: Union[Tensor | None],
+        radii: Union[Tensor | None],
+        acceleration_coefficients: Union[Tensor | None],
+        initial_velocities: Union[Tensor | None],
+       
+    ):
+        self.masses = masses
+        self.radii = radii
+        self.num_bodies = num_bodies
+        self.acceleration_coefficients = acceleration_coefficients
+        self.initial_velocities = initial_velocities
         
 class ElasticCollisionSimulation:
     def __init__(
@@ -134,6 +157,7 @@ class ElasticCollisionSimulation:
             * (torch.dot(-v_rel, -unit_distance_vec))
             * unit_distance_vec
         )
+
         # optional: push bodies apart to avoid error in collision detection due to overlap
         separation_distance = (body_a.radius + body_b.radius) - torch.linalg.norm(
             body_a.position - body_b.position
@@ -145,16 +169,56 @@ class ElasticCollisionSimulation:
             body_b.position += unit_distance_vec * move_distance
     
     @staticmethod
-    def construct_bodies(starting_velocities: torch.Tensor, variables: Variables):
+    def construct_bodies(hidden_variables: HiddenVariables, variables: Variables):
         # construct bodies from variables and starting velocities
+
+        if not hidden_variables.num_bodies == None:
+            num_bodies = hidden_variables.num_bodies
+        elif not variables.num_bodies == None:
+            num_bodies = variables.num_bodies
+        else:
+            raise ValueError("Number of bodies not specified")
+
+        if not hidden_variables.masses == None:
+            masses = hidden_variables.masses
+        elif not variables.masses == None:
+            masses = variables.masses
+        else:
+            raise ValueError("Masses not specified")
+
+        if not hidden_variables.radii == None:
+            radii = hidden_variables.radii
+        elif not variables.radii == None:
+            radii = variables.radii
+        else:
+            raise ValueError("Radii not specified")
+
+        if not hidden_variables.acceleration_coefficients == None:
+            acceleration_coefficients = hidden_variables.acceleration_coefficients
+        elif not variables.acceleration_coefficients == None:
+            acceleration_coefficients = variables.acceleration_coefficients
+        else:
+            raise ValueError("Acceleration coefficients not specified")
+
+        if not hidden_variables.initial_velocities == None:
+            initial_velocities = hidden_variables.initial_velocities
+        elif not variables.initial_velocities == None:
+            initial_velocities = variables.initial_velocities
+        else:
+            raise ValueError("Initial velocities not specified")
+        
+        if variables.starting_positions == None:
+            raise ValueError("Starting positions not specified")
+
         bodies = []
-        for i in range(variables.num_bodies):
+        for i in range(num_bodies):
             bodies.append(
                 Body(
                     position=variables.starting_positions[i],
-                    velocity=starting_velocities[i],
-                    mass=variables.masses[i],
-                    radius=variables.radii[i],
+                    velocity=initial_velocities[i],
+                    acceleration_coefficient=acceleration_coefficients[i],
+                    mass=masses[i],
+                    radius=radii[i],
                 )
             )
         return bodies
@@ -233,9 +297,9 @@ class ElasticCollisionSimulation:
             # Save the current position and velocity to the history
             body.update_history()
     
-    def simulate(self, starting_velocities: torch.Tensor, total_time: float, dt: float):
+    def simulate(self, hidden_variables: HiddenVariables, total_time: float, dt: float):
 
-        self.bodies = self.construct_bodies(starting_velocities, self.variables)
+        self.bodies = self.construct_bodies(hidden_variables, self.variables)
         # simulate
         num_steps = int(total_time / dt)
         for i in range(num_steps):
