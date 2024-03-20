@@ -10,6 +10,7 @@ dependencies = [
  "ndarray",
  "rand",
  "rand_distr",
+ "serde",
  "serde_json",
 ]
 

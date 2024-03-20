@@ -1,8 +1,9 @@
 // use rand::{Rng, thread_rng};
 // use rand::distributions::{Distribution, Uniform};
-use rand_distr::{Normal, Distribution, Uniform};
 use rand::thread_rng;
+use rand_distr::{Distribution, Normal, Uniform};
 use serde_json;
+use serde::{Serialize, Deserialize};
 
 fn sample_initial_positions(
     num_bodies: usize,
@@ -58,56 +59,50 @@ fn sample_initial_positions(
 // for now elastic collisions
 fn update_velocities(
     num_bodies: usize,
-    velocities_x: &mut Vec<f64>,
-    velocities_y: &mut Vec<f64>,
-    positions_x: &Vec<f64>,
-    positions_y: &Vec<f64>,
-    masses: &Vec<f64>,
-    radii: &Vec<f64>,
-    collisions: &mut Vec<(usize, usize)>,
-) {
+    current_state: &mut SimState,
+) { 
     for i in 0..num_bodies {
         for j in i + 1..num_bodies {
-            let distance: f64 = ((positions_x[i] - positions_x[j]).powi(2)
-                + (positions_y[i] - positions_y[j]).powi(2))
+            let distance: f64 = ((current_state.positions_x[i] - current_state.positions_x[j]).powi(2)
+                + (current_state.positions_y[i] - current_state.positions_y[j]).powi(2))
             .sqrt();
 
-            if distance <= radii[i] + radii[j] {
-                collisions.push((i, j));
-                let normal_x: f64 = (positions_x[i] - positions_x[j]) / distance;
-                let normal_y: f64 = (positions_y[i] - positions_y[j]) / distance;
+            if distance <= current_state.radii[i] + current_state.radii[j] {
+                current_state.body_collisions.push((i, j));
+                let normal_x: f64 = (current_state.positions_x[i] - current_state.positions_x[j]) / distance;
+                let normal_y: f64 = (current_state.positions_y[i] - current_state.positions_y[j]) / distance;
 
                 // let tangent_x: f64 = -normal_y; // not needed for elastic collisions
                 // let tangent_y: f64 = normal_x; // not needed for elastic collisions
 
-                let relative_velocity_x: f64 = velocities_x[i] - velocities_x[j];
-                let relative_velocity_y: f64 = velocities_y[i] - velocities_y[j];
+                let relative_velocity_x: f64 = current_state.velocities_x[i] - current_state.velocities_x[j];
+                let relative_velocity_y: f64 = current_state.velocities_y[i] - current_state.velocities_y[j];
 
                 let dot_product: f64 =
                     relative_velocity_x * normal_x + relative_velocity_y * normal_y;
 
                 if dot_product < 0.0 {
-                    let mass_sum: f64 = masses[i] + masses[j];
-                    let mass_difference: f64 = masses[i] - masses[j];
+                    let mass_sum: f64 = current_state.masses[i] + current_state.masses[j];
+                    let mass_difference: f64 = current_state.masses[i] - current_state.masses[j];
 
-                    let new_velocity_i_x: f64 = (mass_difference * velocities_x[i]
-                        + 2.0 * masses[j] * velocities_x[j])
+                    let new_velocity_i_x: f64 = (mass_difference * current_state.velocities_x[i]
+                        + 2.0 * current_state.masses[j] * current_state.velocities_x[j])
                         / mass_sum;
-                    let new_velocity_i_y: f64 = (mass_difference * velocities_y[i]
-                        + 2.0 * masses[j] * velocities_y[j])
-                        / mass_sum;
-
-                    let new_velocity_j_x: f64 = (2.0 * masses[i] * velocities_x[i]
-                        - mass_difference * velocities_x[j])
-                        / mass_sum;
-                    let new_velocity_j_y: f64 = (2.0 * masses[i] * velocities_y[i]
-                        - mass_difference * velocities_y[j])
+                    let new_velocity_i_y: f64 = (mass_difference * current_state.velocities_y[i]
+                        + 2.0 * current_state.masses[j] * current_state.velocities_y[j])
                         / mass_sum;
 
-                    velocities_x[i] = new_velocity_i_x;
-                    velocities_y[i] = new_velocity_i_y;
-                    velocities_x[j] = new_velocity_j_x;
-                    velocities_y[j] = new_velocity_j_y;
+                    let new_velocity_j_x: f64 = (2.0 * current_state.masses[i] * current_state.velocities_x[i]
+                        - mass_difference * current_state.velocities_x[j])
+                        / mass_sum;
+                    let new_velocity_j_y: f64 = (2.0 * current_state.masses[i] * current_state.velocities_y[i]
+                        - mass_difference * current_state.velocities_y[j])
+                        / mass_sum;
+
+                        current_state.velocities_x[i] = new_velocity_i_x;
+                        current_state.velocities_y[i] = new_velocity_i_y;
+                        current_state.velocities_x[j] = new_velocity_j_x;
+                        current_state.velocities_y[j] = new_velocity_j_y;
                 }
             }
         }
@@ -116,143 +111,102 @@ fn update_velocities(
 
 fn handle_boundary_collisions(
     num_bodies: usize,
-    positions_x: &mut Vec<f64>,
-    positions_y: &mut Vec<f64>,
-    velocities_x: &mut Vec<f64>,
-    velocities_y: &mut Vec<f64>,
-    radii: &Vec<f64>,
     space_size_x: f64,
     space_size_y: f64,
-    boundary_collisions: &mut Vec<(usize, usize)>, // collisions[0] = body index, collisions[1] = corresponding boundary index (0: bottom, 1: top, 2: left, 3: right)
+    current_state: &mut SimState,
 ) {
     for i in 0..num_bodies {
         // left boundary
-        if positions_x[i] - radii[i] < 0.0 {
-            positions_x[i] = radii[i];
-            velocities_x[i] = -velocities_x[i];
-            boundary_collisions.push((i, 2));
+        if current_state.positions_x[i] - current_state.radii[i] < 0.0 {
+            current_state.positions_x[i] = current_state.radii[i];
+            current_state.velocities_x[i] = -current_state.velocities_x[i];
+            current_state.boundary_collisions.push((i, 2));
         // right boundary
-        } else if positions_x[i] + radii[i] > space_size_x {
-            positions_x[i] = space_size_x - radii[i];
-            velocities_x[i] = -velocities_x[i];
-            boundary_collisions.push((i, 3));
+        } else if current_state.positions_x[i] + current_state.radii[i] > space_size_x {
+            current_state.positions_x[i] = space_size_x - current_state.radii[i];
+            current_state.velocities_x[i] = -current_state.velocities_x[i];
+            current_state.boundary_collisions.push((i, 3));
         }
         // bottom boundary
-        if positions_y[i] - radii[i] < 0.0 {
-            positions_y[i] = radii[i];
-            velocities_y[i] = -velocities_y[i];
-            boundary_collisions.push((i, 0));
+        if current_state.positions_y[i] - current_state.radii[i] < 0.0 {
+            current_state.positions_y[i] = current_state.radii[i];
+            current_state.velocities_y[i] = -current_state.velocities_y[i];
+            current_state.boundary_collisions.push((i, 0));
         // top boundary
-        } else if positions_y[i] + radii[i] > space_size_y {
-            positions_y[i] = space_size_y - radii[i];
-            velocities_y[i] = -velocities_y[i];
-            boundary_collisions.push((i, 1));
+        } else if current_state.positions_y[i] + current_state.radii[i] > space_size_y {
+            current_state.positions_y[i] = space_size_y - current_state.radii[i];
+            current_state.velocities_y[i] = -current_state.velocities_y[i];
+            current_state.boundary_collisions.push((i, 1));
         }
     }
 }
 
 fn update(
     num_bodies: usize,
-    positions_x: &mut Vec<f64>,
-    positions_y: &mut Vec<f64>,
-    velocities_x: &mut Vec<f64>,
-    velocities_y: &mut Vec<f64>,
-    masses: &Vec<f64>,
-    radii: &Vec<f64>,
     space_size_x: f64,
     space_size_y: f64,
     time_step: f64,
-    velocity_history_x: &mut Vec<Vec<f64>>,
-    velocity_history_y: &mut Vec<Vec<f64>>,
-    position_history_x: &mut Vec<Vec<f64>>,
-    position_history_y: &mut Vec<Vec<f64>>,
-    body_collision_history: &mut Vec<Vec<(usize, usize)>>,
-    boundary_collision_history: &mut Vec<Vec<(usize, usize)>>,
+    current_state: &mut SimState,
 ) {
     // update positions based on velocities
     for i in 0..num_bodies {
-        positions_x[i] += velocities_x[i] * time_step;
-        positions_y[i] += velocities_y[i] * time_step;
+        current_state.positions_x[i] += current_state.velocities_x[i] * time_step;
+        current_state.positions_y[i] += current_state.velocities_y[i] * time_step;
     }
 
     // handle collisions between bodies
-    let mut body_collisions: Vec<(usize, usize)> = Vec::new();
     update_velocities(
         num_bodies,
-        velocities_x,
-        velocities_y,
-        positions_x,
-        positions_y,
-        masses,
-        radii,
-        &mut body_collisions,
+        current_state
     );
 
     // handle collisions with boundaries
-    let mut boundary_collisions: Vec<(usize, usize)> = Vec::new();
     handle_boundary_collisions(
         num_bodies,
-        positions_x,
-        positions_y,
-        velocities_x,
-        velocities_y,
-        radii,
         space_size_x,
         space_size_y,
-        &mut boundary_collisions,
+        current_state
     );
-    // Append current velocities and positions to their respective histories
-    velocity_history_x.push(velocities_x.clone());
-    velocity_history_y.push(velocities_y.clone());
-    position_history_x.push(positions_x.clone());
-    position_history_y.push(positions_y.clone());
-    body_collision_history.push(body_collisions);
-    boundary_collision_history.push(boundary_collisions);
 }
 
 // currently without noise
+#[derive(Clone, Serialize, Deserialize)]
+struct SimState {
+    positions_x: Vec<f64>,
+    positions_y: Vec<f64>,
+    velocities_x: Vec<f64>,
+    velocities_y: Vec<f64>,
+    masses: Vec<f64>,
+    radii: Vec<f64>,
+    body_collisions: Vec<(usize, usize)>,
+    boundary_collisions: Vec<(usize, usize)>, // collisions[0] = body index, collisions[1] = corresponding boundary index (0: bottom, 1: top, 2: left, 3: right)
+}
+
 fn simulate(
     num_bodies: usize,
     space_size_x: f64,
     space_size_y: f64,
     total_time: f64,
     time_step: f64,
-    velocities_x: &mut Vec<f64>,
-    velocities_y: &mut Vec<f64>,
-    radii: &Vec<f64>,
-    masses: &Vec<f64>,
-    positions_x: &mut Vec<f64>,
-    positions_y: &mut Vec<f64>,
-    velocity_history_x: &mut Vec<Vec<f64>>,
-    velocity_history_y: &mut Vec<Vec<f64>>,
-    position_history_x: &mut Vec<Vec<f64>>,
-    position_history_y: &mut Vec<Vec<f64>>,
-    body_collision_history: &mut Vec<Vec<(usize, usize)>>,
-    boundary_collision_history: &mut Vec<Vec<(usize, usize)>>,
-) {
-    let mut current_time: f64 = 0.0;
+    initial_state: SimState,
+) -> Vec<SimState> {
 
+    let mut sim_state_history: Vec<SimState> = Vec::new();
+    sim_state_history.push(initial_state.clone());
+    let mut current_state: SimState = initial_state.clone();
+    let mut current_time: f64 = 0.0;
     while current_time < total_time {
         update(
             num_bodies,
-            positions_x,
-            positions_y,
-            velocities_x,
-            velocities_y,
-            masses,
-            radii,
             space_size_x,
             space_size_y,
             time_step,
-            velocity_history_x,
-            velocity_history_y,
-            position_history_x,
-            position_history_y,
-            body_collision_history,
-            boundary_collision_history,
+            &mut current_state
         );
         current_time += time_step;
+        sim_state_history.push(current_state.clone());
     }
+    return sim_state_history;
 }
 
 // return values of ABC function
@@ -262,14 +216,7 @@ struct SimulationData {
     space_size_y: f64,
     total_time: f64,
     time_step: f64,
-    radii: Vec<f64>,
-    masses: Vec<f64>,
-    velocity_history_x: Vec<Vec<Vec<f64>>>,
-    velocity_history_y: Vec<Vec<Vec<f64>>>,
-    position_history_x: Vec<Vec<Vec<f64>>>,
-    position_history_y: Vec<Vec<Vec<f64>>>,
-    body_collision_history: Vec<Vec<Vec<(usize, usize)>>>,
-    boundary_collision_history: Vec<Vec<Vec<(usize, usize)>>>,
+    state_history: Vec<Vec<SimState>>,
 }
 struct AbcData {
     errors_values: Vec<f64>,
@@ -291,164 +238,60 @@ fn run_abc(
     n: usize,
     epsilon: f64,
     include_velocities_in_error: bool,
+    initial_state: SimState,
 ) -> (SimulationData, SimulationData, AbcData) {
     let mut rng = rand::thread_rng();
 
-    // first initialize the bodies
-    let mut velocities_x: Vec<f64> = velocity_distribution
-        .sample_iter(&mut rng)
-        .take(num_bodies)
-        .collect();
-    let mut velocities_y: Vec<f64> = velocity_distribution
-        .sample_iter(&mut rng)
-        .take(num_bodies)
-        .collect();
-    let radii: Vec<f64> = radius_distribution
-        .sample_iter(&mut rng)
-        .take(num_bodies)
-        .collect();
-    let masses: Vec<f64> = mass_distribution
-        .sample_iter(&mut rng)
-        .take(num_bodies)
-        .collect();
-
-    // initialize positions
-    let (positions_x, positions_y) = sample_initial_positions(
-        num_bodies,
-        space_size_x,
-        space_size_y,
-        &radii,
-        &position_distribution,
-    );
-
-    // get final positions
-    let mut final_positions_x: Vec<f64> = positions_x.clone();
-    let mut final_positions_y: Vec<f64> = positions_y.clone();
-    // get positions and velocities history
-    let mut velocity_history_x: Vec<Vec<f64>> = Vec::new();
-    let mut velocity_history_y: Vec<Vec<f64>> = Vec::new();
-    let mut position_history_x: Vec<Vec<f64>> = Vec::new();
-    let mut position_history_y: Vec<Vec<f64>> = Vec::new();
-    // get collision history
-    let mut body_collision_history: Vec<Vec<(usize, usize)>> = Vec::new();
-    let mut boundary_collision_history: Vec<Vec<(usize, usize)>> = Vec::new();
-
-    // append initial velocities and positions to their respective histories
-    velocity_history_x.push(velocities_x.clone());
-    velocity_history_y.push(velocities_y.clone());
-    position_history_x.push(positions_x.clone());
-    position_history_y.push(positions_y.clone());
-
-    // simulate to get final positions
-    simulate(
+    let goal_states: Vec<SimState> = simulate(
         num_bodies,
         space_size_x,
         space_size_y,
         total_time,
         time_step,
-        &mut velocities_x,
-        &mut velocities_y,
-        &radii,
-        &masses,
-        &mut final_positions_x,
-        &mut final_positions_y,
-        &mut velocity_history_x,
-        &mut velocity_history_y,
-        &mut position_history_x,
-        &mut position_history_y,
-        &mut body_collision_history,
-        &mut boundary_collision_history,
+        initial_state.clone(),
     );
 
-    let mut accepted_states = 0;
-    let mut accepted_velocities_x: Vec<Vec<f64>> = Vec::new();
-    let mut accepted_velocities_y: Vec<Vec<f64>> = Vec::new();
-    let mut accepted_positions_x: Vec<Vec<f64>> = Vec::new();
-    let mut accepted_positions_y: Vec<Vec<f64>> = Vec::new();
-    // velocity and position history of accepted states
-    let mut accepted_velocity_history_x: Vec<Vec<Vec<f64>>> = Vec::new();
-    let mut accepted_velocity_history_y: Vec<Vec<Vec<f64>>> = Vec::new();
-    let mut accepted_position_history_x: Vec<Vec<Vec<f64>>> = Vec::new();
-    let mut accepted_position_history_y: Vec<Vec<Vec<f64>>> = Vec::new();
-    // get collision history of accepted states
-    let mut accepted_body_collision_history: Vec<Vec<Vec<(usize, usize)>>> = Vec::new();
-    let mut accepted_boundary_collision_history: Vec<Vec<Vec<(usize, usize)>>> = Vec::new();
-    // save error values
+    let mut accepted_states: Vec<Vec<SimState>> = Vec::new();
+    let mut num_accepted_states: usize = 0;
     let mut accepted_error_values: Vec<f64> = Vec::new();
 
-    let mut current_positions_x: Vec<f64>;
-    let mut current_positions_y: Vec<f64>;
-    let mut current_velocities_x: Vec<f64>;
-    let mut current_velocities_y: Vec<f64>;
-    // velocity and position history of current state
-    let mut current_velocity_history_x: Vec<Vec<f64>>;
-    let mut current_velocity_history_y: Vec<Vec<f64>>;
-    let mut current_position_history_x: Vec<Vec<f64>>;
-    let mut current_position_history_y: Vec<Vec<f64>>;
-    // get collision history of current state
-    let mut current_body_collision_history: Vec<Vec<(usize, usize)>>;
-    let mut current_boundary_collision_history: Vec<Vec<(usize, usize)>>;
 
     let mut current_iteration: usize = 0;
 
     println!("starting abc loop");
-    while accepted_states < n {
-        // clone initial states so that we can revert to them if the state is not accepted
-        current_positions_x = positions_x.clone();
-        current_positions_y = positions_y.clone();
+    while num_accepted_states < n {
+
+        // build new state
+        let mut current_state: SimState = initial_state.clone();
 
         // sample new velocities
-        current_velocities_x = velocity_distribution
+        current_state.velocities_x = velocity_distribution
             .sample_iter(&mut rng)
             .take(num_bodies)
             .collect();
-        current_velocities_y = velocity_distribution
+        current_state.velocities_y = velocity_distribution
             .sample_iter(&mut rng)
             .take(num_bodies)
             .collect();
-
-        // reset history
-        current_velocity_history_x = Vec::new();
-        current_velocity_history_y = Vec::new();
-        current_position_history_x = Vec::new();
-        current_position_history_y = Vec::new();
-        current_body_collision_history = Vec::new();
-        current_boundary_collision_history = Vec::new();
-        // append initial velocities and positions to their respective histories
-        current_velocity_history_x.push(current_velocities_x.clone());
-        current_velocity_history_y.push(current_velocities_y.clone());
-        current_position_history_x.push(current_positions_x.clone());
-        current_position_history_y.push(current_positions_y.clone());
 
         // simulate with sampled velocities
-        simulate(
+        let simulated_states: Vec<SimState> = simulate(
             num_bodies,
             space_size_x,
             space_size_y,
             total_time,
             time_step,
-            &mut current_velocities_x,
-            &mut current_velocities_y,
-            &radii,
-            &masses,
-            &mut current_positions_x,
-            &mut current_positions_y,
-            &mut current_velocity_history_x,
-            &mut current_velocity_history_y,
-            &mut current_position_history_x,
-            &mut current_position_history_y,
-            &mut current_body_collision_history,
-            &mut current_boundary_collision_history,
+            current_state
         );
 
-        // calculate the error
+        // calculate error
         let mut error: f64 = 0.0;
         for i in 0..num_bodies {
-            error += (final_positions_x[i] - current_positions_x[i]).powi(2);
-            error += (final_positions_y[i] - current_positions_y[i]).powi(2);
+            error += (goal_states.last().unwrap().positions_x[i] - simulated_states.last().unwrap().positions_x[i]).powi(2);
+            error += (goal_states.last().unwrap().positions_y[i] - simulated_states.last().unwrap().positions_y[i]).powi(2);
             if include_velocities_in_error {
-                error += (velocities_x[i] - current_velocities_x[i]).powi(2);
-                error += (velocities_y[i] - current_velocities_y[i]).powi(2);
+                error += (goal_states.last().unwrap().velocities_x[i] - simulated_states.last().unwrap().velocities_x[i]).powi(2);
+                error += (goal_states.last().unwrap().velocities_y[i] - simulated_states.last().unwrap().velocities_y[i]).powi(2);
             }
         }
         if include_velocities_in_error {
@@ -459,24 +302,11 @@ fn run_abc(
 
         // if the error is less than epsilon, accept the state
         if error < epsilon {
-            accepted_states += 1;
-            println!("accepted states: {}", accepted_states);
-            accepted_velocities_x.push(current_velocities_x.clone());
-            accepted_velocities_y.push(current_velocities_y.clone());
-            accepted_positions_x.push(current_positions_x.clone());
-            accepted_positions_y.push(current_positions_y.clone());
-            // append history
-            accepted_velocity_history_x.push(current_velocity_history_x.clone());
-            accepted_velocity_history_y.push(current_velocity_history_y.clone());
-            accepted_position_history_x.push(current_position_history_x.clone());
-            accepted_position_history_y.push(current_position_history_y.clone());
-            // append collision history
-            accepted_body_collision_history.push(current_body_collision_history.clone());
-            accepted_boundary_collision_history.push(current_boundary_collision_history.clone());
+            num_accepted_states += 1;
+            accepted_states.push(simulated_states);
             // append error value
             accepted_error_values.push(error);
         }
-
         current_iteration += 1;
     }
 
@@ -486,14 +316,7 @@ fn run_abc(
         space_size_y,
         total_time,
         time_step,
-        radii: radii.clone(),
-        masses: masses.clone(),
-        velocity_history_x: vec![velocity_history_x],
-        velocity_history_y: vec![velocity_history_y],
-        position_history_x: vec![position_history_x],
-        position_history_y: vec![position_history_y],
-        body_collision_history: vec![body_collision_history],
-        boundary_collision_history: vec![boundary_collision_history],
+        state_history: vec![goal_states],
     };
 
     let accepted_states_simulation_data = SimulationData {
@@ -502,14 +325,7 @@ fn run_abc(
         space_size_y,
         total_time,
         time_step,
-        radii: radii,
-        masses: masses,
-        velocity_history_x: accepted_velocity_history_x,
-        velocity_history_y: accepted_velocity_history_y,
-        position_history_x: accepted_position_history_x,
-        position_history_y: accepted_position_history_y,
-        body_collision_history: accepted_body_collision_history,
-        boundary_collision_history: accepted_boundary_collision_history,
+        state_history: accepted_states,
     };
 
     let general_abc_data = AbcData {
@@ -524,6 +340,55 @@ fn run_abc(
     );
 }
 
+
+fn get_initial_state(
+    velocity_distribution: &impl Distribution<f64>,
+    radius_distribution: &impl Distribution<f64>,
+    mass_distribution: &impl Distribution<f64>,
+    position_distribution: &impl Distribution<f64>,
+    num_bodies: usize,
+    space_size_x: f64,
+    space_size_y: f64,
+) -> SimState {
+    let mut rng = rand::thread_rng();
+    let initial_velocities_x: Vec<f64> = velocity_distribution
+        .sample_iter(&mut rng)
+        .take(num_bodies)
+        .collect();
+    let initial_velocities_y: Vec<f64> = velocity_distribution
+        .sample_iter(&mut rng)
+        .take(num_bodies)
+        .collect();
+    let initial_radii: Vec<f64> = radius_distribution
+        .sample_iter(&mut rng)
+        .take(num_bodies)
+        .collect();
+    let initial_masses: Vec<f64> = mass_distribution
+        .sample_iter(&mut rng)
+        .take(num_bodies)
+        .collect();
+
+    // initialize positions
+    let (initial_positions_x, initial_positions_y) = sample_initial_positions(
+        num_bodies,
+        space_size_x,
+        space_size_y,
+        &initial_radii,
+        position_distribution,
+    );
+
+    return SimState {
+        positions_x: initial_positions_x,
+        positions_y: initial_positions_y,
+        velocities_x: initial_velocities_x,
+        velocities_y: initial_velocities_y,
+        masses: initial_masses,
+        radii: initial_radii,
+        body_collisions: Vec::new(),
+        boundary_collisions: Vec::new(),
+    };
+}
+
 // use struct simulation data
 fn write_simulation_data_to_json(file_name: &str, simulation_data: &SimulationData) {
     let data = serde_json::json!({
@@ -532,14 +397,7 @@ fn write_simulation_data_to_json(file_name: &str, simulation_data: &SimulationDa
         "space_size_y": simulation_data.space_size_y,
         "total_time": simulation_data.total_time,
         "time_step": simulation_data.time_step,
-        "radii": simulation_data.radii,
-        "masses": simulation_data.masses,
-        "velocity_history_x": simulation_data.velocity_history_x,
-        "velocity_history_y": simulation_data.velocity_history_y,
-        "position_history_x": simulation_data.position_history_x,
-        "position_history_y": simulation_data.position_history_y,
-        "body_collision_history": simulation_data.body_collision_history,
-        "boundary_collision_history": simulation_data.boundary_collision_history
+        "state_history": simulation_data.state_history,
     });
 
     // pretty
@@ -550,7 +408,7 @@ fn write_simulation_data_to_json(file_name: &str, simulation_data: &SimulationDa
 }
 
 fn main() {
-    let num_bodies = 4;
+    let num_bodies = 2;
     let space_size_x = 10.0;
     let space_size_y = 10.0;
     let total_time = 10.0;
@@ -564,6 +422,16 @@ fn main() {
     let n = 1;
     let epsilon = 1.0;
     let include_velocities_in_error = false;
+
+    let initial_state = get_initial_state(
+        &velocity_distribution,
+        &radius_distribution,
+        &mass_distribution,
+        &position_distribution,
+        num_bodies,
+        space_size_x,
+        space_size_y,
+    );
 
     let time = std::time::Instant::now();
     let (original_states_simulation_data, accepted_states_simulation_data, abc_data) = run_abc(
@@ -579,6 +447,7 @@ fn main() {
         n,
         epsilon,
         include_velocities_in_error,
+        initial_state,
     );
     let elapsed = time.elapsed();
 
@@ -603,23 +472,82 @@ fn main() {
         "time per iteration in seconds: {:?}",
         elapsed.as_secs_f64() / abc_data.num_iterations as f64
     );
-    
-    // Some print statements to check the results
-    println!("final original positions x: {:?}", original_states_simulation_data.position_history_x[0].last().unwrap());
-    println!("final original positions y: {:?}", original_states_simulation_data.position_history_y[0].last().unwrap());
-    println!("accepted positions x: {:?}", accepted_states_simulation_data.position_history_x[0].last().unwrap());
-    println!("accepted positions y: {:?}", accepted_states_simulation_data.position_history_y[0].last().unwrap());
-    println!("original velocities x: {:?}", original_states_simulation_data.velocity_history_x[0][0]);
-    println!("original velocities y: {:?}", original_states_simulation_data.velocity_history_y[0][0]);
-    println!("accepted velocities x: {:?}", accepted_states_simulation_data.velocity_history_x[0][0]);
-    println!("accepted velocities y: {:?}", accepted_states_simulation_data.velocity_history_y[0][0]);
-    println!("final original velocities x: {:?}", original_states_simulation_data.velocity_history_x[0].last().unwrap());
-    println!("final original velocities y: {:?}", original_states_simulation_data.velocity_history_y[0].last().unwrap());
-    println!("final accepted velocities x: {:?}", accepted_states_simulation_data.velocity_history_x[0].last().unwrap());
-    println!("final accepted velocities y: {:?}", accepted_states_simulation_data.velocity_history_y[0].last().unwrap());
+
+    // some print statements to check the results
+    println!(
+        "original states - initial positions x: {:?}",
+        original_states_simulation_data.state_history[0].first().unwrap().positions_x
+    );
+    println!(
+        "original states - initial positions y: {:?}",
+        original_states_simulation_data.state_history[0].first().unwrap().positions_y
+    );
+    println!(
+        "accepted states - initial positions x: {:?}",
+        accepted_states_simulation_data.state_history[0].first().unwrap().positions_x
+    );
+    println!(
+        "accepted states - initial positions y: {:?}",
+        accepted_states_simulation_data.state_history[0].first().unwrap().positions_y
+    );
+    println!(
+        "original states - initial velocities x: {:?}",
+        original_states_simulation_data.state_history[0].first().unwrap().velocities_x
+    );
+    println!(
+        "original states - initial velocities y: {:?}",
+        original_states_simulation_data.state_history[0].first().unwrap().velocities_y
+    ); 
+    println!(
+        "accepted states - initial velocities x: {:?}",
+        accepted_states_simulation_data.state_history[0].first().unwrap().velocities_x
+    );
+    println!(
+        "accepted states - initial velocities y: {:?}",
+        accepted_states_simulation_data.state_history[0].first().unwrap().velocities_y
+    );
+    println!(
+        "original states - final positions x: {:?}",
+        original_states_simulation_data.state_history[0].last().unwrap().positions_x
+    );
+    println!(
+        "original states - final positions y: {:?}",
+        original_states_simulation_data.state_history[0].last().unwrap().positions_y
+    );
+    println!(
+        "accepted states - final positions x: {:?}",
+        accepted_states_simulation_data.state_history[0].last().unwrap().positions_x
+    );
+    println!(
+        "accepted states - final positions y: {:?}",
+        accepted_states_simulation_data.state_history[0].last().unwrap().positions_y
+    );
+    println!(
+        "original states - final velocities x: {:?}",
+        original_states_simulation_data.state_history[0].last().unwrap().velocities_x
+    );
+    println!(
+        "original states - final velocities y: {:?}",
+        original_states_simulation_data.state_history[0].last().unwrap().velocities_y
+    );
+    println!(
+        "accepted states - final velocities x: {:?}",
+        accepted_states_simulation_data.state_history[0].last().unwrap().velocities_x
+    );
+    println!(
+        "accepted states - final velocities y: {:?}",
+        accepted_states_simulation_data.state_history[0].last().unwrap().velocities_y
+    );
+    println!(
+        "original states - masses: {:?}",
+        original_states_simulation_data.state_history[0].last().unwrap().masses
+    );
+    println!(
+        "accepted states - masses: {:?}",
+        accepted_states_simulation_data.state_history[0].last().unwrap().masses
+    );
+
     println!("accepted error values: {:?}", abc_data.errors_values);
-    // to get the amount of collisions the simulations 
+    // to get the amount of collisions the simulations
     // flatten the collision history and get the length of the resulting vector
-    println!("collisions amount in original states: {:?}", original_states_simulation_data.body_collision_history[0].iter().flatten().count());
-    println!("collisions amount in accepted states: {:?}", accepted_states_simulation_data.body_collision_history[0].iter().flatten().count());
 }
