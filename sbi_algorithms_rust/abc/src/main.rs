@@ -264,6 +264,8 @@ fn run_abc(
         // build new state
         let mut current_state: SimState = initial_state.clone();
 
+
+        /* for sampling velocities
         // sample new velocities
         current_state.velocities_x = velocity_distribution
             .sample_iter(&mut rng)
@@ -273,8 +275,16 @@ fn run_abc(
             .sample_iter(&mut rng)
             .take(num_bodies)
             .collect();
+        */
 
-        // simulate with sampled velocities
+        // for sampling masses
+        current_state.masses = mass_distribution
+            .sample_iter(&mut rng)
+            .take(num_bodies)
+            .collect();
+        // set first mass to original mass
+        current_state.masses[0] = initial_state.masses[0];
+
         let simulated_states: Vec<SimState> = simulate(
             num_bodies,
             space_size_x,
@@ -408,15 +418,15 @@ fn write_simulation_data_to_json(file_name: &str, simulation_data: &SimulationDa
 }
 
 fn main() {
-    let num_bodies = 2;
+    let num_bodies = 4;
     let space_size_x = 10.0;
     let space_size_y = 10.0;
-    let total_time = 10.0;
+    let total_time = 40.0;
     let time_step = 0.01;
     // let velocity_distribution = Normal::new(0.0, 5.0).unwrap();
     let velocity_distribution = Uniform::new(-5.0, 5.0);
     let radius_distribution = Uniform::new(1.5, 1.6);
-    let mass_distribution = Uniform::new(1.0, 1.1);
+    let mass_distribution = Uniform::new(1.0, 50.0);
     // let position_distribution = Normal::new(space_size_x/2.0, space_size_x/2.0).unwrap();
     let position_distribution = Uniform::new(0.0, space_size_x);
     let n = 1;
@@ -546,8 +556,28 @@ fn main() {
         "accepted states - masses: {:?}",
         accepted_states_simulation_data.state_history[0].last().unwrap().masses
     );
+    // print normalized masses original states
+    let mut normalized_masses: Vec<f64> = original_states_simulation_data.state_history[0].last().unwrap().masses.clone();
+    // let sum: f64 = normalized_masses.iter().sum();
+    let first_mass: f64 = normalized_masses[0];
+    normalized_masses.iter_mut().for_each(|x| *x /= first_mass);
+    println!("original states - div by first, masses: {:?}", normalized_masses);
+    // print normalized masses accepted states\
+    normalized_masses = accepted_states_simulation_data.state_history[0].last().unwrap().masses.clone();
+    // let sum: f64 = normalized_masses.iter().sum();
+    let first_mass: f64 = normalized_masses[0];
+    normalized_masses.iter_mut().for_each(|x| *x /= first_mass);
+    println!("accepted states - div by first, masses: {:?}", normalized_masses);
 
     println!("accepted error values: {:?}", abc_data.errors_values);
     // to get the amount of collisions the simulations
-    // flatten the collision history and get the length of the resulting vector
+    println!(
+        "original states - body collisions: {:?}",
+        original_states_simulation_data.state_history[0].last().unwrap().body_collisions.len()
+    );
+    println!(
+        "accepted states - body collisions: {:?}",
+        accepted_states_simulation_data.state_history[0].last().unwrap().body_collisions.len()
+    );
+
 }
