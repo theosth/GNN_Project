@@ -434,10 +434,10 @@ fn main() {
     let num_bodies = 4;
     let space_size_x = 10.0;
     let space_size_y = 10.0;
-    let total_time = 40.0;
-    let time_step = 0.01;
+    let total_time = 10.0;
+    let time_step: f64 = 0.1;
     // let velocity_distribution = Normal::new(0.0, 5.0).unwrap();
-    let velocity_distribution = Uniform::new(-5.0, 5.0);
+    let velocity_distribution = Uniform::new(-15.0, 15.0);
     let radius_distribution = Uniform::new(1.5, 1.6);
     let mass_distribution = Uniform::new(1.0, 50.0);
     // let position_distribution = Normal::new(space_size_x/2.0, space_size_x/2.0).unwrap();

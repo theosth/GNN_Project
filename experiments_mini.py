@@ -15,6 +15,8 @@ from typing import Union, Callable
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import matplotlib.animation as animation
+from matplotlib.animation import PillowWriter
 import numpy as np
 
 
@@ -244,53 +246,72 @@ def get_plot_format_from_rust_simulation_json(json_filepath: str):
         max_radius,
     )
 
+def create_gif_visualization(position_history_by_timestep, velocity_history_by_timestep, space_size, max_radius, num_timesteps, file_path="data/animation.gif"):
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    def animate(i):
+        ax.clear()
+        plot_timestep(ax, position_history_by_timestep[i], velocity_history_by_timestep[i], space_size, max_radius)
+
+    ani = animation.FuncAnimation(fig, animate, frames=num_timesteps, interval=200)
+    # Save the animation as a GIF
+    ani.save(file_path, writer=PillowWriter(fps=2))
 
 if __name__ == "__main__":
-    total_time = 10.0
-    dt = 0.1
-    space_size = 10.0
-    max_radius = space_size // 10.0
-    acceleration_coefficient_value = 0.0
-    constant_mass_value = 1.0
-    constant_radius_value = max_radius
-    velocity_distribution = torch.distributions.Uniform(low=-5.0, high=5.0)
-    position_distribution = torch.distributions.Uniform(low=0.0, high=space_size)
-    num_bodies = 4
+    # total_time = 10.0
+    # dt = 0.1
+    # space_size = 10.0
+    # max_radius = space_size // 10.0
+    # acceleration_coefficient_value = 0.0
+    # constant_mass_value = 1.0
+    # constant_radius_value = max_radius
+    # velocity_distribution = torch.distributions.Uniform(low=-5.0, high=5.0)
+    # position_distribution = torch.distributions.Uniform(low=0.0, high=space_size)
+    # num_bodies = 4
 
-    simulation = run_simulation(
-        total_time=total_time,
-        dt=dt,
-        space_size=space_size,
-        max_radius=max_radius,
-        acceleration_coefficient_value=acceleration_coefficient_value,
-        constant_mass_value=constant_mass_value,
-        constant_radius_value=constant_radius_value,
-        velocity_distribution=velocity_distribution,
-        position_distribution=position_distribution,
-        num_bodies=num_bodies
-    )
+    # simulation = run_simulation(
+    #     total_time=total_time,
+    #     dt=dt,
+    #     space_size=space_size,
+    #     max_radius=max_radius,
+    #     acceleration_coefficient_value=acceleration_coefficient_value,
+    #     constant_mass_value=constant_mass_value,
+    #     constant_radius_value=constant_radius_value,
+    #     velocity_distribution=velocity_distribution,
+    #     position_distribution=position_distribution,
+    #     num_bodies=num_bodies
+    # )
 
     # # safe the simulation to a json file
-    simulation.save_to_json('data/simulation_save.json')
-    # load the simulation from the json/ file
-    simulation = ElasticCollisionSimulation.load_from_json('data/simulation_save.json')
+    # simulation.save_to_json('data/simulation_save.json')
+    # # load the simulation from the json/ file
+    # simulation = ElasticCollisionSimulation.load_from_json('data/simulation_save.json')
 
-    # python sym
-    (
-        position_history_by_timestep,
-        velocity_history_by_timestep,
-        space_size,
-        max_radius,
-    ) = get_plot_format_from_python_simulation_json("data/simulation_save.json")
+    # # python sym
+    # (
+    #     position_history_by_timestep,
+    #     velocity_history_by_timestep,
+    #     space_size,
+    #     max_radius,
+    # ) = get_plot_format_from_python_simulation_json("data/simulation_save.json")
 
     # rust sym
-    # position_history_by_timestep, velocity_history_by_timestep, space_size, max_radius = get_plot_format_from_rust_simulation_json('sbi_algorithms_rust/abc/data/original_simulation_data.json')
+    position_history_by_timestep, velocity_history_by_timestep, space_size, max_radius = get_plot_format_from_rust_simulation_json('sbi_algorithms_rust/abc/data/original_simulation_data.json')
 
-    plot_simulation(
+    # plot_simulation(
+    #     position_history_by_timestep,
+    #     velocity_history_by_timestep,
+    #     space_size,
+    #     max_radius,
+    #     num_timesteps_to_plot=40,
+    #     file_path="data/output.png",
+    # )
+
+    create_gif_visualization(
         position_history_by_timestep,
         velocity_history_by_timestep,
         space_size,
         max_radius,
-        num_timesteps_to_plot=40,
-        file_path="data/output.png",
+        num_timesteps=100,
+        file_path="data/animation.gif",
     )
