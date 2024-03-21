@@ -126,6 +126,9 @@ class HiddenVariables:
         self.initial_velocities = initial_velocities
         
 class ElasticCollisionSimulation:
+
+    SEPARATION_COEFFICIENT = 0.05
+
     def __init__(
         self,
         variables: Variables,
@@ -137,7 +140,6 @@ class ElasticCollisionSimulation:
         self.bodies = None
         self.noise = noise
         self.collision_history_per_timestep = {}
-    
     
     @staticmethod
     def detect_collision(body_a: Body, body_b: Body) -> bool:
@@ -167,13 +169,14 @@ class ElasticCollisionSimulation:
             * unit_distance_vec
         )
 
+        # alternative way: ignore one time step for this body pair 
         # optional: push bodies apart to avoid error in collision detection due to overlap
         separation_distance = (body_a.radius + body_b.radius) - torch.linalg.norm(
             body_a.position - body_b.position
         )
         if separation_distance > 0:
             # Push bodies apart by a fraction of the overlap
-            move_distance = separation_distance * 0.01  # fraction of overlap
+            move_distance = separation_distance * ElasticCollisionSimulation.SEPARATION_COEFFICIENT  # fraction of overlap
             body_a.position -= unit_distance_vec * move_distance
             body_b.position += unit_distance_vec * move_distance
     
