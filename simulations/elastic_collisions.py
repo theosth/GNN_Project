@@ -23,6 +23,13 @@ class Body:
         self.radius: torch.float64 = radius
         self.position_history: list[torch.Tensor] = []
         self.velocity_history: list[torch.Tensor] = []
+        self._id = None
+
+    def set_id(self, _id: int):
+        self._id = _id
+
+    def get_id(self) -> int | None:
+        return self._id
 
     def update_history(self):
         """Save the current position and velocity to the history."""
@@ -100,6 +107,7 @@ class Variables:
         self.starting_positions = starting_positions
         self.acceleration_coefficients = acceleration_coefficients
         self.initial_velocities = initial_velocities
+        
 
 class HiddenVariables:
     def __init__(
@@ -128,6 +136,7 @@ class ElasticCollisionSimulation:
         self.enable_logging = enable_logging
         self.bodies = None
         self.noise = noise
+        self.collision_history_per_timestep = {}
     
     
     @staticmethod
@@ -212,15 +221,15 @@ class ElasticCollisionSimulation:
 
         bodies = []
         for i in range(num_bodies):
-            bodies.append(
-                Body(
+            body = Body(
                     position=variables.starting_positions[i],
                     velocity=initial_velocities[i],
                     acceleration_coefficient=acceleration_coefficients[i],
                     mass=masses[i],
                     radius=radii[i],
-                )
-            )
+                   )
+            body.set_id(i)
+            bodies.append(body)
         return bodies
     
     @staticmethod
@@ -263,7 +272,7 @@ class ElasticCollisionSimulation:
         else:
             pass
         
-    def handle_boundary_collision(self, body: Body, dt: float):
+    def handle_boundary_collision(self, body: Body, dt: float, dt_i: int):
         for dim in range(2):
             # If the body is going to move outside the space boundaries
             if (
@@ -274,12 +283,18 @@ class ElasticCollisionSimulation:
                 self.logger(
                     f"Collision detected between {body} and the boundary at time {dt}"
                 )
+                self.collision_history_per_timestep[int(dt_i)].append({"time": dt*int(dt_i), 
+                                                                       "body1": body.get_id(), 
+                                                                       "boundary": dim})
                 body.velocity[dim] = -body.velocity[
                     dim
                 ]  # Reverse the velocity component
 
-    def update(self, dt: float):
+    def update(self, dt: float, dt_i: int):
         # Detect and resolve collisions
+
+        self.collision_history_per_timestep[int(dt_i)] = []
+
         n = len(self.bodies)
         for i in range(n):
             for j in range(i + 1, n):
@@ -288,22 +303,31 @@ class ElasticCollisionSimulation:
                     self.logger(
                         f"Collision detected between {self.bodies[i]} and {self.bodies[j]} at time {dt}"
                     )
+                    self.collision_history_per_timestep[int(dt_i)].append({"time": dt*int(dt_i), 
+                                                                      "body1": self.bodies[i].get_id(), 
+                                                                      "body2": self.bodies[j].get_id()})
+                    
                     self.update_velocity_elastic(self.bodies[i], self.bodies[j])
 
         # Update positions
+        body_i = 0
         for body in self.bodies:
-            self.handle_boundary_collision(body, dt)
+            self.handle_boundary_collision(body, dt, dt_i)
             body.position += body.velocity * dt
             # Save the current position and velocity to the history
             body.update_history()
+            body_i += 1
     
     def simulate(self, hidden_variables: HiddenVariables, total_time: float, dt: float):
 
         self.bodies = self.construct_bodies(hidden_variables, self.variables)
         # simulate
         num_steps = int(total_time / dt)
+
+        #self.time_steps = num_steps
+        #self.dt = dt
         for i in range(num_steps):
-            self.update(dt)
+            self.update(dt,i)
 
         body_positions = torch.stack([body.position for body in self.bodies])
 
@@ -318,3 +342,7 @@ class ElasticCollisionSimulation:
     
     def get_velocity_history(self):
         return [body.velocity_history for body in self.bodies]
+    
+    def get_collision_history_per_timestep(self):
+        return deepcopy(self.collision_history_per_timestep)
+            
