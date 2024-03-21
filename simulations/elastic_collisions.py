@@ -44,9 +44,9 @@ class Body:
         return {
             "position": self.position.tolist(),  # Convert tensors to lists
             "velocity": self.velocity.tolist(),
-            "mass": self.mass,  # Convert tensor scalar to Python scalar
-            "acceleration_coefficient": self.acceleration_coefficient,
-            "radius": self.radius,
+            "mass": self.mass.tolist(),  # Convert tensor scalar to Python scalar
+            "acceleration_coefficient": self.acceleration_coefficient.tolist(),
+            "radius": self.radius.tolist(),
             "position_history": [p.tolist() for p in self.position_history],
             "velocity_history": [v.tolist() for v in self.velocity_history],
         }
@@ -108,6 +108,29 @@ class Variables:
         self.acceleration_coefficients = acceleration_coefficients
         self.initial_velocities = initial_velocities
         
+    def to_dict(self):
+        return {
+            "masses": self.masses.tolist() if self.masses is not None else None,
+            "radii": self.radii.tolist() if self.radii is not None else None,
+            "num_bodies": self.num_bodies,
+            "space_size": self.space_size.tolist(),
+            "starting_positions": self.starting_positions.tolist() if self.starting_positions is not None else None,
+            "acceleration_coefficients": self.acceleration_coefficients.tolist() if self.acceleration_coefficients is not None else None,
+            "initial_velocities": self.initial_velocities.tolist() if self.initial_velocities is not None else None,
+        }
+        
+    @staticmethod
+    def from_dict(data):
+        return Variables(
+            masses=torch.tensor(data["masses"]) if data["masses"] else None,
+            radii=torch.tensor(data["radii"]) if data["radii"] else None,
+            num_bodies=data["num_bodies"],
+            space_size=torch.tensor(data["space_size"]),
+            starting_positions=torch.tensor(data["starting_positions"]) if data["starting_positions"] else None,
+            acceleration_coefficients=torch.tensor(data["acceleration_coefficients"]) if data["acceleration_coefficients"] else None,
+            initial_velocities=torch.tensor(data["initial_velocities"]) if data["initial_velocities"] else None,
+        )
+        
 
 class HiddenVariables:
     def __init__(
@@ -125,6 +148,25 @@ class HiddenVariables:
         self.acceleration_coefficients = acceleration_coefficients
         self.initial_velocities = initial_velocities
         
+    def to_dict(self):
+        return {
+            "masses": self.masses.tolist() if self.masses is not None else None,
+            "radii": self.radii.tolist() if self.radii is not None else None,
+            "num_bodies": self.num_bodies,
+            "acceleration_coefficients": self.acceleration_coefficients.tolist() if self.acceleration_coefficients is not None else None,
+            "initial_velocities": self.initial_velocities.tolist() if self.initial_velocities is not None else None,
+        }
+        
+    @staticmethod
+    def from_dict(data):
+        return HiddenVariables(
+            masses=torch.tensor(data["masses"]) if data["masses"] else None,
+            radii=torch.tensor(data["radii"]) if data["radii"] else None,
+            num_bodies=data["num_bodies"],
+            acceleration_coefficients=torch.tensor(data["acceleration_coefficients"]) if data["acceleration_coefficients"] else None,
+            initial_velocities=torch.tensor(data["initial_velocities"]) if data["initial_velocities"] else None,
+        )
+        
 class ElasticCollisionSimulation:
 
     SEPARATION_COEFFICIENT = 0.05
@@ -140,6 +182,29 @@ class ElasticCollisionSimulation:
         self.bodies = None
         self.noise = noise
         self.collision_history_per_timestep = {}
+    
+    
+    def save_to_json(self, filename="data/simulation_save.json"):
+        variables = self.variables.to_dict()
+        bodies = [body.to_dict() for body in self.bodies]
+        noise = self.noise
+        
+        with open(filename, "w") as file:
+            json.dump({"variables": variables, "bodies": bodies, "noise": noise}, file, indent=4)
+        
+    
+    @staticmethod
+    def load_from_json(file_name="data/simulation_save.json"):
+        with open(file_name, "r") as file:
+            data = json.load(file)
+        variables = Variables.from_dict(data["variables"])
+        bodies = [Body.from_dict(body_dict) for body_dict in data["bodies"]]
+        noise = data["noise"]
+        
+        sim = ElasticCollisionSimulation(variables, noise)
+        sim.bodies = bodies
+        return sim
+
     
     @staticmethod
     def detect_collision(body_a: Body, body_b: Body) -> bool:
