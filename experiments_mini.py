@@ -10,10 +10,6 @@ import numpy as np
 
 
 
-
-
-
-
 def plot_timestep(ax, positions, velocities, space_size, max_radius):
     # Normalize the velocity vectors
     normalized_velocities = velocities / np.linalg.norm(velocities, axis=1, keepdims=True) * space_size
