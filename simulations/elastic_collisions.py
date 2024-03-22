@@ -107,6 +107,9 @@ class Variables:
         self.starting_positions = starting_positions
         self.acceleration_coefficients = acceleration_coefficients
         self.initial_velocities = initial_velocities
+
+    def get_num_bodies(self):
+        return self.num_bodies
         
     def to_dict(self):
         return {
@@ -147,6 +150,22 @@ class HiddenVariables:
         self.num_bodies = num_bodies
         self.acceleration_coefficients = acceleration_coefficients
         self.initial_velocities = initial_velocities
+
+    @staticmethod
+    def from_tensor(tensor: Tensor):
+        num_bodies = int(tensor[0])
+        masses = tensor[1:num_bodies+1]
+        radii = tensor[num_bodies+1:2*num_bodies+1]
+        a_coeffs = tensor[2*num_bodies+1:3*num_bodies+1]
+        initial_v = tensor[3*num_bodies+1:].reshape(num_bodies, 2)
+        
+        return HiddenVariables(
+            num_bodies=num_bodies,
+            masses=masses,
+            radii=radii,
+            acceleration_coefficients=a_coeffs,
+            initial_velocities=initial_v,
+        )
         
     def to_dict(self):
         return {
