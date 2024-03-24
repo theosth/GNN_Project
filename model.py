@@ -596,6 +596,50 @@ def plot_param_accuracy_box(predictions, ground_truth, file_path=None):
         plt.savefig(file_path)
     plt.show()
 
+def visualize_posteriors(model, test_loader, num_samples=1000, file_path=None):
+    model.eval()
+    with torch.no_grad():
+        for batch_idx, (X_test, Y_test) in enumerate(test_loader):  # Loop over batches
+            X_test = X_test.to(train_config["device"])
+            Y_test = Y_test.to(train_config["device"])
+
+            print(f"X_test shape: {X_test.shape}")
+            print(f"Y_test shape: {Y_test.shape}")
+
+            summary_stats = summary_network(X_test)
+            print(f"summary_stats shape: {summary_stats.shape}")
+            posterior_samples, _ = model(Y_test, summary_stats)
+
+            # Convert posterior samples to numpy arrays
+            posterior_samples = posterior_samples.cpu().numpy()
+
+            print(f"posterior_samples shape: {posterior_samples.shape}")
+
+            # Get the number of instances in the batch
+            num_instances = len(Y_test)
+
+            # Plot the posteriors for each parameter
+            num_params = posterior_samples.shape[-1]
+            fig, axes = plt.subplots(num_params, 1, figsize=(6, 3*num_params))  # Adjusted figsize
+            
+            for i in range(num_params):
+                ax = axes[i]
+                ax.scatter(range(1, num_instances+1), posterior_samples[:, i], label='Posterior')
+                
+                # Plot ground truth values as points
+                for j, gt_value in enumerate(Y_test[:, i]):
+                    ax.scatter(j+1, gt_value.item(), color='red', marker='o', label='Ground Truth' if j==0 else None)
+                    ax.axvline(j+1, color='grey', linestyle='--', linewidth=0.5)  # Add vertical dashed lines
+                
+                ax.set_ylabel(f'Parameter {i+1}')  # Set y-axis label
+                ax.set_xlabel('Instance Index')  # Set x-axis label
+                ax.legend()
+
+            plt.tight_layout()
+            if file_path:
+                plt.savefig(file_path)
+            plt.show()
+            break  # Only visualize one batch of test instances
 
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -737,4 +781,6 @@ if __name__ == "__main__":
     plot_param_accuracy_scatter(predictions, ground_truth, file_path="scatter_plot.png")
 
     plot_param_accuracy_box(predictions, ground_truth, file_path="box_plot.png")
+    
+    visualize_posteriors(inference_network, test_loader, file_path="posteriors.png")
 
