@@ -442,7 +442,7 @@ fn main() {
     // let position_distribution = Normal::new(space_size_x/2.0, space_size_x/2.0).unwrap();
     let position_distribution = Uniform::new(0.0, space_size_x);
     let n = 1;
-    let epsilon = 1.0;
+    let epsilon = 2.0;
     let include_velocities_in_error = false;
 
     let initial_state = get_initial_state(
