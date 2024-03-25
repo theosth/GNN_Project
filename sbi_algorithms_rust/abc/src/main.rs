@@ -257,7 +257,7 @@ fn run_abc(
         // build new state
         let mut current_state: SimState = initial_state.clone();
 
-        /* for sampling velocities
+        // for sampling velocities
         // sample new velocities
         current_state.velocities_x = velocity_distribution
             .sample_iter(&mut rng)
@@ -267,15 +267,14 @@ fn run_abc(
             .sample_iter(&mut rng)
             .take(num_bodies)
             .collect();
-        */
 
         // for sampling masses
-        current_state.masses = mass_distribution
-            .sample_iter(&mut rng)
-            .take(num_bodies)
-            .collect();
-        // set first mass to original mass
-        current_state.masses[0] = initial_state.masses[0];
+        // current_state.masses = mass_distribution
+        //     .sample_iter(&mut rng)
+        //     .take(num_bodies)
+        //     .collect();
+        // // set first mass to original mass
+        // current_state.masses[0] = initial_state.masses[0];
 
         let simulated_states: Vec<SimState> = simulate(
             num_bodies,
@@ -298,7 +297,7 @@ fn run_abc(
                 - simulated_states.last().unwrap().positions_y[i])
                 .powi(2);
         }
-        positions_error /= num_bodies as f64;
+        // positions_error /= num_bodies as f64;
         positions_error = positions_error.sqrt();
     
 
@@ -437,9 +436,9 @@ fn main() {
     let total_time = 10.0;
     let time_step: f64 = 0.1;
     // let velocity_distribution = Normal::new(0.0, 5.0).unwrap();
-    let velocity_distribution = Uniform::new(-15.0, 15.0);
-    let radius_distribution = Uniform::new(1.5, 1.6);
-    let mass_distribution = Uniform::new(1.0, 50.0);
+    let velocity_distribution = Uniform::new(-5.0, 5.0);
+    let radius_distribution = Uniform::new(1.0, 1.1);
+    let mass_distribution = Uniform::new(1.0, 1.1);
     // let position_distribution = Normal::new(space_size_x/2.0, space_size_x/2.0).unwrap();
     let position_distribution = Uniform::new(0.0, space_size_x);
     let n = 1;
